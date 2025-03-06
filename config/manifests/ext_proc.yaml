@@ -77,11 +77,14 @@ spec:
         - -poolName
         - "my-pool"
         - -v
-        - "3"
+        - "4"
         - -grpcPort
         - "9002"
         - -grpcHealthPort
         - "9003"
+        env:
+        - name: USE_STREAMING
+          value: "false"
         ports:
         - containerPort: 9002
         - containerPort: 9003
