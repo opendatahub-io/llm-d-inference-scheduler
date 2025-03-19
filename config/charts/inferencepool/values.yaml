@@ -1,0 +1,14 @@
+inferenceExtension:
+  replicas: 1
+  image:
+    name: epp
+    hub: us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension
+    tag: main
+    pullPolicy: Always
+  extProcPort: 9002
+
+inferencePool:
+  name: pool-1
+  targetPortNumber: 8000
+  selector:
+    app: vllm-llama2-7b
