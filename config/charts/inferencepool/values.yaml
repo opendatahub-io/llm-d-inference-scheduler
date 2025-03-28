@@ -8,8 +8,13 @@ inferenceExtension:
   extProcPort: 9002
 
 inferencePool:
-  # name: pool-1 # REQUIRED
   targetPortNumber: 8000
   # modelServers: # REQUIRED
     # matchLabels: 
     #   app: vllm-llama3-8b-instruct
+
+provider:
+  name: none
+
+gke:
+  monitoringSecret: inference-gateway-sa-metrics-reader-secret
