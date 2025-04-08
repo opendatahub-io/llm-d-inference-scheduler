@@ -8,9 +8,8 @@ spec:
   poolRef:
     name: vllm-llama3-8b-instruct
   targetModels:
-  - name: food-review
+  - name: food-review-1
     weight: 100
-
 ---
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferenceModel
@@ -21,7 +20,6 @@ spec:
   criticality: Critical
   poolRef:
     name: vllm-llama3-8b-instruct
-
 ---
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferenceModel
