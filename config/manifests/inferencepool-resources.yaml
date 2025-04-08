@@ -1,3 +1,6 @@
+# Note: If you change this file, please also change the file used for e2e tests!
+# 
+# https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/test/testdata/inferencepool-e2e.yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferencePool
 metadata:
