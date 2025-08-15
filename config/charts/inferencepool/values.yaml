@@ -39,11 +39,12 @@ inferenceExtension:
   enableLeaderElection: false
 
 inferencePool:
-  targetPortNumber: 8000
+  targetPorts:
+    - number: 8000
   modelServerType: vllm # vllm, triton-tensorrt-llm
-  # modelServers: # REQUIRED
-    # matchLabels: 
-    #   app: vllm-llama3-8b-instruct
+  modelServers: # REQUIRED
+    matchLabels:
+      app: vllm-llama3-8b-instruct
 
 provider:
   name: none
