@@ -46,6 +46,8 @@ import (
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/common"
 	backendmetrics "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/backend/metrics"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/config/loader"
+	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/datalayer"
+	dlmetrics "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/datalayer/metrics"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/datastore"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/metrics"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/metrics/collectors"
@@ -59,8 +61,15 @@ import (
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/scheduling/framework/plugins/scorer"
 	testfilter "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/scheduling/framework/plugins/test/filter"
 	runserver "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/server"
+	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/util/env"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/util/logging"
 	"sigs.k8s.io/gateway-api-inference-extension/version"
+)
+
+const (
+	// enableExperimentalDatalayerV2 defines the environment variable
+	// used as feature flag for the pluggable data layer.
+	enableExperimentalDatalayerV2 = "ENABLE_EXPERIMENTAL_DATALAYER_V2"
 )
 
 var (
@@ -245,40 +254,12 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	// --- Setup Datastore ---
-	mapping, err := backendmetrics.NewMetricMapping(
-		*totalQueuedRequestsMetric,
-		*kvCacheUsagePercentageMetric,
-		*loraInfoMetric,
-	)
+	useDatalayerV2 := env.GetEnvBool(enableExperimentalDatalayerV2, false, setupLog)
+	epf, err := r.setupMetricsCollection(setupLog, useDatalayerV2)
 	if err != nil {
-		setupLog.Error(err, "Failed to create metric mapping from flags.")
 		return err
 	}
-	verifyMetricMapping(*mapping, setupLog)
-
-	var metricsHttpClient *http.Client
-	if *modelServerMetricsScheme == "https" {
-		metricsHttpClient = &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: *modelServerMetricsHttpsInsecureSkipVerify,
-				},
-			},
-		}
-	} else {
-		metricsHttpClient = http.DefaultClient
-	}
-
-	pmf := backendmetrics.NewPodMetricsFactory(&backendmetrics.PodMetricsClientImpl{
-		MetricMapping:            mapping,
-		ModelServerMetricsPort:   int32(*modelServerMetricsPort),
-		ModelServerMetricsPath:   *modelServerMetricsPath,
-		ModelServerMetricsScheme: *modelServerMetricsScheme,
-		Client:                   metricsHttpClient,
-	},
-		*refreshMetricsInterval)
-
-	datastore := datastore.NewDatastore(ctx, pmf)
+	datastore := datastore.NewDatastore(ctx, epf)
 
 	// --- Setup Metrics Server ---
 	customCollectors := []prometheus.Collector{collectors.NewInferencePoolMetricsCollector(datastore)}
@@ -371,6 +352,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		MetricsStalenessThreshold:        *metricsStalenessThreshold,
 		Director:                         director,
 		SaturationDetector:               saturationDetector,
+		UseExperimentalDatalayerV2:       useDatalayerV2, // pluggable data layer feature flag
 	}
 	if err := serverRunner.SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to setup EPP controllers")
@@ -444,6 +426,81 @@ func (r *Runner) parsePluginsConfiguration(ctx context.Context) error {
 
 	logger.Info("loaded configuration from file/text successfully")
 	return nil
+}
+
+func (r *Runner) setupMetricsCollection(setupLog logr.Logger, useExperimentalDatalayer bool) (datalayer.EndpointFactory, error) {
+	if useExperimentalDatalayer {
+		return setupDatalayer()
+	}
+
+	if len(datalayer.GetSources()) != 0 {
+		setupLog.Info("data sources registered but pluggable datalayer is disabled")
+	}
+	return setupMetricsV1(setupLog)
+}
+
+func setupMetricsV1(setupLog logr.Logger) (datalayer.EndpointFactory, error) {
+	mapping, err := backendmetrics.NewMetricMapping(
+		*totalQueuedRequestsMetric,
+		*kvCacheUsagePercentageMetric,
+		*loraInfoMetric,
+	)
+	if err != nil {
+		setupLog.Error(err, "Failed to create metric mapping from flags.")
+		return nil, err
+	}
+	verifyMetricMapping(*mapping, setupLog)
+
+	var metricsHttpClient *http.Client
+	if *modelServerMetricsScheme == "https" {
+		metricsHttpClient = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: *modelServerMetricsHttpsInsecureSkipVerify,
+				},
+			},
+		}
+	} else {
+		metricsHttpClient = http.DefaultClient
+	}
+
+	pmf := backendmetrics.NewPodMetricsFactory(&backendmetrics.PodMetricsClientImpl{
+		MetricMapping:            mapping,
+		ModelServerMetricsPort:   int32(*modelServerMetricsPort),
+		ModelServerMetricsPath:   *modelServerMetricsPath,
+		ModelServerMetricsScheme: *modelServerMetricsScheme,
+		Client:                   metricsHttpClient,
+	},
+		*refreshMetricsInterval)
+	return pmf, nil
+}
+
+func setupDatalayer() (datalayer.EndpointFactory, error) {
+	// create and register a metrics data source and extractor. In the future,
+	// data sources and extractors might be configured via a file. Once done,
+	// this (and registering the sources with the endpoint factory) should
+	// be moved accordingly.
+	source := dlmetrics.NewDataSource(*modelServerMetricsScheme,
+		int32(*modelServerMetricsPort), // start with (optional) command line port value
+		*modelServerMetricsPath,
+		*modelServerMetricsHttpsInsecureSkipVerify,
+		nil)
+	extractor, err := dlmetrics.NewExtractor(*totalQueuedRequestsMetric,
+		*kvCacheUsagePercentageMetric,
+		*loraInfoMetric)
+
+	if err != nil {
+		return nil, err
+	}
+	if err := source.AddExtractor(extractor); err != nil {
+		return nil, err
+	}
+	if err := datalayer.RegisterSource(source); err != nil {
+		return nil, err
+	}
+
+	factory := datalayer.NewEndpointFactory(datalayer.GetSources(), *refreshMetricsInterval)
+	return factory, nil
 }
 
 func initLogging(opts *zap.Options) {
