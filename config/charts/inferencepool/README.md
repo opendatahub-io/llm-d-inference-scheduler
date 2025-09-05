@@ -45,6 +45,26 @@ Then apply it with:
 $ helm install vllm-llama3-8b-instruct ./config/charts/inferencepool -f values.yaml
 ```
 
+### Install with Custom EPP Plugins Configuration
+
+To set custom EPP plugin config, you can pass it as an inline yaml. For example:
+
+```yaml
+  inferenceExtension:
+    pluginsCustomConfig:
+      custom-plugins.yaml: |
+        apiVersion: inference.networking.x-k8s.io/v1alpha1
+        kind: EndpointPickerConfig
+        plugins:
+        - type: custom-scorer
+          parameters:
+            custom-threshold: 64
+        schedulingProfiles:
+        - name: default
+          plugins:
+          - pluginRef: custom-scorer
+```
+
 ### Install with Additional Ports
 
 To expose additional ports (e.g., for ZMQ), you can define them in the `values.yaml` file:
@@ -126,6 +146,7 @@ The following table list the configurable parameters of the chart.
 | `inferenceExtension.affinity`               | Affinity for the endpoint picker. Defaults to `{}`.                                                                    |
 | `inferenceExtension.tolerations`            | Tolerations for the endpoint picker. Defaults to `[]`.                                                                 |
 | `inferenceExtension.flags.has-enable-leader-election` | Enable leader election for high availability. When enabled, only one EPP pod (the leader) will be ready to serve traffic.       |
+| `inferenceExtension.pluginsCustomConfig`    | Custom config that is passed to EPP as inline yaml.      |
 | `provider.name`                             | Name of the Inference Gateway implementation being used. Possible values: `gke`. Defaults to `none`.                   |
 
 ## Notes
