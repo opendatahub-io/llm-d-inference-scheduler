@@ -201,7 +201,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	datastore := datastore.NewDatastore(ctx, epf)
+	datastore := datastore.NewDatastore(ctx, epf, int32(*modelServerMetricsPort))
 
 	// --- Setup Metrics Server ---
 	customCollectors := []prometheus.Collector{collectors.NewInferencePoolMetricsCollector(datastore)}
@@ -466,7 +466,6 @@ func setupMetricsV1(setupLog logr.Logger) (datalayer.EndpointFactory, error) {
 
 	pmf := backendmetrics.NewPodMetricsFactory(&backendmetrics.PodMetricsClientImpl{
 		MetricMapping:            mapping,
-		ModelServerMetricsPort:   int32(*modelServerMetricsPort),
 		ModelServerMetricsPath:   *modelServerMetricsPath,
 		ModelServerMetricsScheme: *modelServerMetricsScheme,
 		Client:                   metricsHttpClient,
@@ -481,7 +480,6 @@ func setupDatalayer() (datalayer.EndpointFactory, error) {
 	// this (and registering the sources with the endpoint factory) should
 	// be moved accordingly.
 	source := dlmetrics.NewDataSource(*modelServerMetricsScheme,
-		int32(*modelServerMetricsPort), // start with (optional) command line port value
 		*modelServerMetricsPath,
 		*modelServerMetricsHttpsInsecureSkipVerify,
 		nil)
