@@ -62,11 +62,10 @@ spec:
         - "--{{ .name }}"
         - "{{ .value }}"
         {{- end }}
-        - "--tracing"
         {{- if .Values.inferenceExtension.tracing.enabled }}
-        - "true"
+        - --tracing=true
         {{- else }}
-        - "false"
+        - --tracing=false
         {{- end }}
         {{- if not .Values.inferenceExtension.monitoring.prometheus.enabled }}
         - --metrics-endpoint-auth=false
