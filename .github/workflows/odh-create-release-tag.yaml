@@ -1,0 +1,184 @@
+name: Create Tag and Release with Changelog
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'New release tag (e.g., odh-v2.35)'
+        required: true
+        type: string
+      next_odh_tag:
+        description: 'Next development tag (e.g., odh-v2.36)'
+        required: true
+        type: string
+    # Note: This workflow assumes the release tag and image tags are in sync.
+    #       'tag_name' is used to create the release and as the value to find in files.
+    #       'next_odh_tag' provides the new value to set.
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+  
+jobs:
+  fetch-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      
+      - name: Validate tag format
+        run: |
+          import re
+          import sys
+          
+          tag_name = "${{ github.event.inputs.tag_name }}"
+          next_tag = "${{ github.event.inputs.next_odh_tag }}"
+          
+          # Expected format: odh-vX.Y or odh-vX.Y.Z
+          tag_pattern = r'^odh-v\d+\.\d+(\.\d+)?$'
+          
+          if not re.match(tag_pattern, tag_name):
+            print(f"Error: Tag '{tag_name}' does not match expected format 'odh-vX.Y' or 'odh-vX.Y.Z'", file=sys.stderr)
+            print(f"Examples: odh-v2.35, odh-v2.35.1", file=sys.stderr)
+            sys.exit(1)
+          
+          if not re.match(tag_pattern, next_tag):
+            print(f"Error: Next tag '{next_tag}' does not match expected format 'odh-vX.Y' or 'odh-vX.Y.Z'", file=sys.stderr)
+            print(f"Examples: odh-v2.36, odh-v2.36.0", file=sys.stderr)
+            sys.exit(1)
+          
+          print(f"  Tag format validation passed")
+          print(f"  Release tag: {tag_name}")
+          print(f"  Next tag: {next_tag}")
+        shell: python
+      
+      - name: Validate Tekton file exists
+        run: |
+          TEKTON_FILE=".tekton/llm-d-inference-scheduler-push.yaml"
+          
+          if [ ! -f "$TEKTON_FILE" ]; then
+            echo "Error: Required file '$TEKTON_FILE' not found"
+            echo "This file is typically only present on release branches."
+            echo "Please ensure you are running this workflow on the correct branch."
+            exit 1
+          fi
+          
+          echo "Tekton file validation passed: $TEKTON_FILE exists"
+      
+      - name: print tag
+        id: print_tag
+        run: | 
+          echo "NEW_TAG=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+          echo "$(basename ${{ github.ref }})"
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          import sys
+          import subprocess
+          tag_name = "${{ github.event.inputs.tag_name }}"
+          #Check both local and remote tags to see if the tag already exists
+          local_check = subprocess.run(['git', 'tag', '-l', tag_name], capture_output=True)
+          remote_check = subprocess.run(['git', 'ls-remote', '--tags', 'origin', tag_name], capture_output=True)
+          if local_check.stdout or remote_check.stdout:
+            print(f"Error: Tag '{tag_name}' already exists.", file=sys.stderr)
+            sys.exit(1)
+          else:
+            print(f"Tag '{tag_name}' does not exist.")
+        
+        shell: python
+        continue-on-error: false
+
+  changelog:
+    name: Changelog
+    needs: [fetch-tag]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      
+      - name: Configure Git User
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+
+      - name: Create Tag
+        id: create_tag
+        run: |
+          git tag -a ${{ github.event.inputs.tag_name }} -m "Prepare for ODH release ${{ github.event.inputs.tag_name }}"
+          git push origin ${{ github.event.inputs.tag_name }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ github.token }}
+          tag_name: ${{ github.event.inputs.tag_name }}
+          prerelease: false
+          draft: false
+          generate_release_notes: true
+          name: ${{ github.event.inputs.tag_name }}
+
+  bump-odh-tag:
+    name: Bump ODH Tag for Next Release
+    runs-on: ubuntu-latest
+    needs: [fetch-tag, changelog]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Update llm-d Konflux file with next ODH tag
+        run: |
+          CURRENT_TAG="${{ github.event.inputs.tag_name }}"
+          NEXT_TAG="${{ github.event.inputs.next_odh_tag }}"
+          TEKTON_FILE=".tekton/llm-d-inference-scheduler-push.yaml"
+          
+          echo "Updating ODH tag from $CURRENT_TAG to $NEXT_TAG..."
+          
+          # Verify CURRENT_TAG exists in the file before attempting replacement
+          if ! grep -q "quay.io/opendatahub/llm-d-inference-scheduler:${CURRENT_TAG}" "$TEKTON_FILE"; then
+            echo "Error: Current tag '${CURRENT_TAG}' not found in $TEKTON_FILE"
+            echo ""
+            echo "Tags currently present in the file:"
+            grep -o "quay.io/opendatahub/llm-d-inference-scheduler:[^[:space:]]*" "$TEKTON_FILE" || echo "  No llm-d-inference-scheduler tags found"
+            exit 1
+          fi
+          
+          echo "Current tag found in file"
+          
+          # Using sed to replace the current ODH tag with the next one
+          sed -i "s|quay.io/opendatahub/llm-d-inference-scheduler:${CURRENT_TAG}|quay.io/opendatahub/llm-d-inference-scheduler:${NEXT_TAG}|g" "$TEKTON_FILE"
+          
+          # Verify NEXT_TAG now exists in the file after replacement
+          if ! grep -q "quay.io/opendatahub/llm-d-inference-scheduler:${NEXT_TAG}" "$TEKTON_FILE"; then
+            echo "Error: Replacement failed - next tag '${NEXT_TAG}' not found in $TEKTON_FILE after sed command"
+            echo ""
+            echo "Tags currently present in the file:"
+            grep -o "quay.io/opendatahub/llm-d-inference-scheduler:[^[:space:]]*" "$TEKTON_FILE" || echo "  No llm-d-inference-scheduler tags found"
+            exit 1
+          fi
+          
+          echo "Tag successfully updated from $CURRENT_TAG to $NEXT_TAG"
+          
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add -f .tekton/llm-d-inference-scheduler-push.yaml
+          
+          # Check for changes before committing
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "No changes to commit. Exiting."
+          else
+            git commit -m "chore(konflux): Bump ODH release tag to ${{ github.event.inputs.next_odh_tag }}"
+            git push
+          fi
