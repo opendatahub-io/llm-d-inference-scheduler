@@ -438,6 +438,9 @@ func (r *Runner) registerInTreePlugins() {
 	plugins.Register(testfilter.HeaderBasedTestingFilterType, testfilter.HeaderBasedTestingFilterFactory)
 	// register response received plugin for test purpose only (used in conformance tests)
 	plugins.Register(testresponsereceived.DestinationEndpointServedVerifierType, testresponsereceived.DestinationEndpointServedVerifierFactory)
+	// register datalayer metrics collection plugins
+	plugins.Register(dlmetrics.MetricsDataSourceType, dlmetrics.MetricsDataSourceFactory)
+	plugins.Register(dlmetrics.MetricsExtractorType, dlmetrics.ModelServerExtractorFactory)
 }
 
 func (r *Runner) parseConfigurationPhaseOne(ctx context.Context) (*configapi.EndpointPickerConfig, error) {
@@ -476,7 +479,7 @@ func (r *Runner) parseConfigurationPhaseOne(ctx context.Context) (*configapi.End
 // Return a function that can be used in the EPP Handle to list pod names.
 func makePodListFunc(ds datastore.Datastore) func() []types.NamespacedName {
 	return func() []types.NamespacedName {
-		pods := ds.PodList(func(_ backendmetrics.PodMetrics) bool { return true })
+		pods := ds.PodList(backendmetrics.AllPodsPredicate)
 		names := make([]types.NamespacedName, 0, len(pods))
 
 		for _, p := range pods {
@@ -615,10 +618,10 @@ func setupMetricsV1(setupLog logr.Logger) (datalayer.EndpointFactory, error) {
 // are to be configured), must be done before the EndpointFactory is initialized.
 func setupDatalayer(logger logr.Logger) (datalayer.EndpointFactory, error) {
 	// create and register a metrics data source and extractor.
-	source := dlmetrics.NewDataSource(*modelServerMetricsScheme,
+	source := dlmetrics.NewMetricsDataSource(*modelServerMetricsScheme,
 		*modelServerMetricsPath,
 		*modelServerMetricsHttpsInsecureSkipVerify)
-	extractor, err := dlmetrics.NewExtractor(*totalQueuedRequestsMetric,
+	extractor, err := dlmetrics.NewModelServerExtractor(*totalQueuedRequestsMetric,
 		*totalRunningRequestsMetric,
 		*kvCacheUsagePercentageMetric,
 		*loraInfoMetric, *cacheInfoMetric)
