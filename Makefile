@@ -4,8 +4,8 @@ include Makefile.tools.mk
 SHELL := /usr/bin/env bash
 
 # Defaults
-TARGETOS ?= $(shell go env GOOS)
-TARGETARCH ?= $(shell go env GOARCH)
+TARGETOS ?= $(shell command -v go >/dev/null 2>&1 && go env GOOS || uname -s | tr '[:upper:]' '[:lower:]')
+TARGETARCH ?= $(shell command -v go >/dev/null 2>&1 && go env GOARCH || uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/; s/armv7l/arm/')
 PROJECT_NAME ?= llm-d-inference-scheduler
 SIDECAR_IMAGE_NAME ?= llm-d-routing-sidecar
 VLLM_SIMULATOR_IMAGE_NAME ?= llm-d-inference-sim
@@ -69,30 +69,28 @@ PYTHON_VERSION := 3.12
 PYTHON_CONFIG ?= $(shell command -v python$(PYTHON_VERSION)-config || command -v python3-config)
 ifeq ($(PYTHON_CONFIG),)
 	ifeq ($(TARGETOS),darwin)
-		# macOS: Find Homebrew's python-config script for the most reliable flags.
-		BREW_PREFIX := $(shell command -v brew >/dev/null 2>&1 && brew --prefix python@$(PYTHON_VERSION) 2>/dev/null)
-		PYTHON_CONFIG ?= $(BREW_PREFIX)/bin/python$(PYTHON_VERSION)-config
-		PYTHON_ERROR := "Could not execute 'python$(PYTHON_VERSION)-config'. Please ensure Python is installed correctly with: 'brew install python@$(PYTHON_VERSION)' or install python3.12 manually."
+        # macOS: Find Homebrew's python-config script for the most reliable flags.
+        BREW_PREFIX := $(shell command -v brew >/dev/null 2>&1 && brew --prefix python@$(PYTHON_VERSION) 2>/dev/null)
+        PYTHON_CONFIG ?= $(BREW_PREFIX)/bin/python$(PYTHON_VERSION)-config
+        PYTHON_ERROR := "Could not execute 'python$(PYTHON_VERSION)-config'. Please ensure Python is installed correctly with: 'brew install python@$(PYTHON_VERSION)' or install python3.12 manually."
 	else ifeq ($(TARGETOS),linux)
-		# Linux: Use standard system tools to find flags.
-		PYTHON_ERROR := "Python $(PYTHON_VERSION) development headers not found. Please install with: 'sudo apt install python$(PYTHON_VERSION)-dev' or 'sudo dnf install python$(PYTHON_VERSION)-devel'"
+        # Linux: Use standard system tools to find flags.
+        PYTHON_ERROR := "Python $(PYTHON_VERSION) development headers not found. Please install with: 'sudo apt install python$(PYTHON_VERSION)-dev' or 'sudo dnf install python$(PYTHON_VERSION)-devel'"
 	else
-		PYTHON_ERROR := "you should set up PYTHON_CONFIG variable manually"
+        PYTHON_ERROR := "you should set up PYTHON_CONFIG variable manually"
 	endif
 endif
 
-# Check if PYTHON_CONFIG is found before using it
-ifneq ($(PYTHON_CONFIG),)
-ifneq ($(shell $(PYTHON_CONFIG) --cflags 2>/dev/null),)
-	PYTHON_CFLAGS := $(shell $(PYTHON_CONFIG) --cflags)
-	# Use --ldflags --embed to get all necessary flags for linking
-	PYTHON_LDFLAGS := $(shell $(PYTHON_CONFIG) --ldflags --embed)
-else
-	$(error ${PYTHON_ERROR})
+ifeq ($(PYTHON_CONFIG),)
+    $(error ${PYTHON_ERROR})
 endif
-else
-	$(error ${PYTHON_ERROR})
+
+ifeq ($(shell $(PYTHON_CONFIG) --cflags 2>/dev/null),)
+    $(error Python configuration tool cannot provide cflags)
 endif
+
+PYTHON_CFLAGS := $(shell $(PYTHON_CONFIG) --cflags)
+PYTHON_LDFLAGS := $(shell $(PYTHON_CONFIG) --ldflags --embed)
 
 # CGO flags with all dependencies
 CGO_CFLAGS := $(PYTHON_CFLAGS) '-I$(shell pwd)/lib'
@@ -156,12 +154,12 @@ test: test-unit test-e2e ## Run unit tests and e2e tests
 test-unit: test-unit-epp test-unit-sidecar
 
 .PHONY: test-unit-%
-test-unit-%: download-tokenizer install-dependencies ## Run unit tests
+test-unit-%: download-tokenizer check-dependencies ## Run unit tests
 	@printf "\033[33;1m==== Running Unit Tests ====\033[0m\n"
 	CGO_CFLAGS=${$*_CGO_CFLAGS} CGO_LDFLAGS=${$*_CGO_LDFLAGS} go test $($*_LDFLAGS) -v $$($($*_TEST_FILES) | tr '\n' ' ')
 
 .PHONY: test-integration
-test-integration: download-tokenizer install-dependencies ## Run integration tests
+test-integration: download-tokenizer check-dependencies ## Run integration tests
 	@printf "\033[33;1m==== Running Integration Tests ====\033[0m\n"
 	go test -ldflags="$(LDFLAGS)" -v -tags=integration_tests ./test/integration/
 
@@ -187,9 +185,9 @@ lint: check-golangci-lint check-typos ## Run lint
 build: build-epp build-sidecar ## Build the project
 
 .PHONY: build-%
-build-%: check-go install-dependencies download-tokenizer ## Build the project
+build-%: check-go download-tokenizer ## Build the project
 	@printf "\033[33;1m==== Building ====\033[0m\n"
-	go build $($*_LDFLAGS) -o bin/$($*_NAME) cmd/$($*_NAME)/main.go
+	CGO_CFLAGS=${$*_CGO_CFLAGS} CGO_LDFLAGS=${$*_CGO_LDFLAGS} go build $($*_LDFLAGS) -o bin/$($*_NAME) cmd/$($*_NAME)/main.go
 
 ##@ Container Build/Push
 
@@ -465,26 +463,55 @@ clean-env-dev-kubernetes: check-kubectl check-kustomize check-envsubst
 
 ##@ Dependencies
 
+.PHONY: check-dependencies
+check-dependencies: ## Check if development dependencies are installed
+	@if [ "$(TARGETOS)" = "linux" ]; then \
+	  if [ -x "$$(command -v apt)" ]; then \
+	    if ! dpkg -s libzmq3-dev >/dev/null 2>&1 || ! dpkg -s g++ >/dev/null 2>&1 || ! dpkg -s python$(PYTHON_VERSION)-dev >/dev/null 2>&1; then \
+	      echo "ERROR: Missing dependencies. Please run 'sudo make install-dependencies'"; \
+	      exit 1; \
+	    fi; \
+	  elif [ -x "$$(command -v dnf)" ]; then \
+	    if ! rpm -q zeromq-devel >/dev/null 2>&1 || ! rpm -q gcc-c++ >/dev/null 2>&1 || ! rpm -q python$(PYTHON_VERSION)-devel >/dev/null 2>&1; then \
+	      echo "ERROR: Missing dependencies. Please run 'sudo make install-dependencies'"; \
+	      exit 1; \
+	    fi; \
+	  else \
+	    echo "WARNING: Unsupported Linux package manager. Cannot verify dependencies."; \
+	  fi; \
+	elif [ "$(TARGETOS)" = "darwin" ]; then \
+	  if [ -x "$$(command -v brew)" ]; then \
+	    if ! brew list zeromq pkg-config >/dev/null 2>&1; then \
+	      echo "ERROR: Missing dependencies. Please run 'make install-dependencies'"; \
+	      exit 1; \
+	    fi; \
+	  else \
+	    echo "ERROR: Homebrew is not installed and is required. Install it from https://brew.sh/"; \
+	    exit 1; \
+	  fi; \
+	fi
+	@echo "✅ All dependencies are installed."
+
 .PHONY: install-dependencies
 install-dependencies: ## Install development dependencies based on OS/ARCH
 	@echo "Checking and installing development dependencies..."
 	@if [ "$(TARGETOS)" = "linux" ]; then \
 	  if [ -x "$$(command -v apt)" ]; then \
-	    if ! dpkg -s libzmq3-dev >/dev/null 2>&1 || ! dpkg -s g++ >/dev/null 2>&1; then \
+	    if ! dpkg -s libzmq3-dev >/dev/null 2>&1 || ! dpkg -s g++ >/dev/null 2>&1 || ! dpkg -s python$(PYTHON_VERSION)-dev >/dev/null 2>&1; then \
 	      echo "Installing dependencies with apt..."; \
-	      apt-get update && apt-get install -y libzmq3-dev g++; \
+	      apt-get update && apt-get install -y libzmq3-dev g++ python$(PYTHON_VERSION)-dev; \
 	    else \
-	      echo "✅ ZMQ and g++ are already installed."; \
+	      echo "✅ ZMQ, g++, and Python dev headers are already installed."; \
 	    fi; \
 	  elif [ -x "$$(command -v dnf)" ]; then \
-	    if ! dnf -q list installed zeromq-devel >/dev/null 2>&1 || ! dnf -q list installed gcc-c++ >/dev/null 2>&1; then \
+	    if ! rpm -q zeromq-devel >/dev/null 2>&1 || ! rpm -q gcc-c++ >/dev/null 2>&1 || ! rpm -q python$(PYTHON_VERSION)-devel >/dev/null 2>&1; then \
 	      echo "Installing dependencies with dnf..."; \
-	      dnf install -y zeromq-devel gcc-c++; \
+	      dnf install -y zeromq-devel gcc-c++ python$(PYTHON_VERSION)-devel; \
 	    else \
-	      echo "✅ ZMQ and gcc-c++ are already installed."; \
+	      echo "✅ ZMQ, gcc-c++, and Python dev headers are already installed."; \
 	    fi; \
 	  else \
-	    echo "Unsupported Linux package manager. Install libzmq and g++/gcc-c++ manually."; \
+	    echo "ERROR: Unsupported Linux package manager. Install libzmq, g++/gcc-c++, and python-devel manually."; \
 	    exit 1; \
 	  fi; \
 	elif [ "$(TARGETOS)" = "darwin" ]; then \
@@ -496,10 +523,10 @@ install-dependencies: ## Install development dependencies based on OS/ARCH
 	      echo "✅ ZeroMQ and pkgconf are already installed."; \
 	    fi; \
 	  else \
-	    echo "Homebrew is not installed and is required to install zeromq. Install it from https://brew.sh/"; \
+	    echo "ERROR: Homebrew is not installed and is required to install zeromq. Install it from https://brew.sh/"; \
 	    exit 1; \
 	  fi; \
 	else \
-	  echo "Unsupported OS: $(TARGETOS). Install development dependencies manually."; \
+	  echo "ERROR: Unsupported OS: $(TARGETOS). Install development dependencies manually."; \
 	  exit 1; \
 	fi
