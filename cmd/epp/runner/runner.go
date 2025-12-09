@@ -60,6 +60,7 @@ import (
 	dlmetrics "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/datalayer/metrics"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/datastore"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/flowcontrol"
+	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/flowcontrol/contracts"
 	fccontroller "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/flowcontrol/controller"
 	fcregistry "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/flowcontrol/registry"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/metrics"
@@ -330,7 +331,10 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// --- Admission Control Initialization ---
 	var admissionController requestcontrol.AdmissionController
+	var locator contracts.PodLocator
+	locator = requestcontrol.NewDatastorePodLocator(ds)
 	if r.featureGates[flowcontrol.FeatureGate] {
+		locator = requestcontrol.NewCachedPodLocator(ctx, locator, time.Millisecond*50)
 		setupLog.Info("Initializing experimental Flow Control layer")
 		fcCfg, err := flowControlConfig.ValidateAndApplyDefaults()
 		if err != nil {
@@ -342,24 +346,28 @@ func (r *Runner) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to initialize Flow Registry: %w", err)
 		}
-		fc, err := fccontroller.NewFlowController(ctx, fcCfg.Controller, registry, saturationDetector, setupLog)
+		fc, err := fccontroller.NewFlowController(
+			ctx,
+			fcCfg.Controller,
+			registry, saturationDetector,
+			locator,
+			setupLog,
+		)
 		if err != nil {
 			return fmt.Errorf("failed to initialize Flow Controller: %w", err)
 		}
 		go registry.Run(ctx)
-		admissionController = requestcontrol.NewFlowControlAdmissionController(saturationDetector, fc)
+		admissionController = requestcontrol.NewFlowControlAdmissionController(fc)
 	} else {
 		setupLog.Info("Experimental Flow Control layer is disabled, using legacy admission control")
-		admissionController = requestcontrol.NewLegacyAdmissionController(saturationDetector)
+		admissionController = requestcontrol.NewLegacyAdmissionController(saturationDetector, locator)
 	}
 
-	locator := requestcontrol.NewDatastorePodLocator(ds)
-	cachedLocator := requestcontrol.NewCachedPodLocator(ctx, locator, time.Millisecond*50)
 	director := requestcontrol.NewDirectorWithConfig(
 		ds,
 		scheduler,
 		admissionController,
-		cachedLocator,
+		locator,
 		r.requestControlConfig)
 
 	// --- Setup ExtProc Server Runner ---
