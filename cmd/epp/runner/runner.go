@@ -447,6 +447,7 @@ func (r *Runner) registerInTreePlugins() {
 	plugins.Register(profile.SingleProfileHandlerType, profile.SingleProfileHandlerFactory)
 	plugins.Register(scorer.KvCacheUtilizationScorerType, scorer.KvCacheUtilizationScorerFactory)
 	plugins.Register(scorer.QueueScorerType, scorer.QueueScorerFactory)
+	plugins.Register(scorer.RunningRequestsSizeScorerType, scorer.RunningRequestsSizeScorerFactory)
 	plugins.Register(scorer.LoraAffinityScorerType, scorer.LoraAffinityScorerFactory)
 	// Latency predictor plugins
 	plugins.Register(slo_aware_router.SLOAwareRouterPluginType, slo_aware_router.SLOAwareRouterFactory)
