@@ -245,7 +245,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	// --- Setup Datastore ---
-	epf, err := r.setupMetricsCollection(setupLog, r.featureGates[datalayer.FeatureGate])
+	epf, err := r.setupMetricsCollection(setupLog, r.featureGates[datalayer.ExperimentalDatalayerFeatureGate])
 	if err != nil {
 		return err
 	}
@@ -387,7 +387,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		MetricsStalenessThreshold:        *metricsStalenessThreshold,
 		Director:                         director,
 		SaturationDetector:               saturationDetector,
-		UseExperimentalDatalayerV2:       r.featureGates[datalayer.FeatureGate], // pluggable data layer feature flag
+		UseExperimentalDatalayerV2:       r.featureGates[datalayer.ExperimentalDatalayerFeatureGate], // pluggable data layer feature flag
 	}
 	if err := serverRunner.SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to setup EPP controllers")
@@ -479,8 +479,9 @@ func (r *Runner) parseConfigurationPhaseOne(ctx context.Context) (*configapi.End
 		}
 	}
 
-	loader.RegisterFeatureGate(datalayer.FeatureGate)
+	loader.RegisterFeatureGate(datalayer.ExperimentalDatalayerFeatureGate)
 	loader.RegisterFeatureGate(flowcontrol.FeatureGate)
+	loader.RegisterFeatureGate(datalayer.PrepareDataPluginsFeatureGate)
 
 	r.registerInTreePlugins()
 
@@ -520,9 +521,15 @@ func (r *Runner) parseConfigurationPhaseTwo(ctx context.Context, rawConfig *conf
 
 	// Add requestControl plugins
 	r.requestControlConfig.AddPlugins(handle.GetAllPlugins()...)
+
 	// Sort prepare data plugins in DAG order (topological sort). Also check prepare data plugins for cycles.
 	if r.requestControlConfig.PrepareDataPluginGraph() != nil {
 		return nil, errors.New("failed to load the configuration - prepare data plugins have cyclic dependencies")
+	}
+	// TODO(#1970): Remove feature gate check once prepare data plugins are stable.
+	if !r.featureGates[datalayer.PrepareDataPluginsFeatureGate] {
+		// If the feature gate is disabled, clear any prepare data plugins so they are not used.
+		r.requestControlConfig.WithPrepareDataPlugins()
 	}
 
 	// Handler deprecated configuration options
@@ -545,7 +552,7 @@ func (r *Runner) deprecatedConfigurationHelper(cfg *config.Config, logger logr.L
 
 	if _, ok := os.LookupEnv(enableExperimentalDatalayerV2); ok {
 		logger.Info("Enabling the experimental Data Layer V2 using environment variables is deprecated and will be removed in next version")
-		r.featureGates[datalayer.FeatureGate] = env.GetEnvBool(enableExperimentalDatalayerV2, false, logger)
+		r.featureGates[datalayer.ExperimentalDatalayerFeatureGate] = env.GetEnvBool(enableExperimentalDatalayerV2, false, logger)
 	}
 	if _, ok := os.LookupEnv(enableExperimentalFlowControlLayer); ok {
 		logger.Info("Enabling the experimental Flow Control layer using environment variables is deprecated and will be removed in next version")
