@@ -16,6 +16,10 @@ WORKDIR /workspace
 COPY go.mod go.mod
 COPY go.sum go.sum
 
+# The toolchain go1.24.11 in go.mod will cause Go to download 1.24.11 when building to fix CVE-2025-61729
+ENV GOTOOLCHAIN=auto
+RUN go mod download
+
 # Copy the go source
 COPY cmd/ cmd/
 COPY pkg/ pkg/
