@@ -25,7 +25,7 @@ spec:
   - name: output-image
     value: quay.io/opendatahub/llm-d-inference-scheduler:{{revision}}
   - name: dockerfile
-    value: Dockerfile
+    value: Dockerfile.epp
   - name: path-context
     value: .
   - name: additional-tags
