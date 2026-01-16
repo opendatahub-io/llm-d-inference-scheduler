@@ -2,7 +2,7 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   annotations:
-    build.appstudio.openshift.io/repo: https://github.com/opendatahub-io/llm-d-inference-scheduler?rev={{revision}}
+    build.appstudio.openshift.io/repo: https://github.com/opendatahub-io/llm-d-routing-sidecar?rev={{revision}}
     build.appstudio.redhat.com/commit_sha: '{{revision}}'
     build.appstudio.redhat.com/target_branch: '{{target_branch}}'
     pipelinesascode.tekton.dev/cancel-in-progress: "false"
@@ -12,9 +12,9 @@ metadata:
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: opendatahub-builds
-    appstudio.openshift.io/component: llm-d-inference-scheduler
+    appstudio.openshift.io/component: llm-d-routing-sidecar
     pipelines.appstudio.openshift.io/type: build
-  name: llm-d-inference-scheduler-on-push
+  name: llm-d-routing-sidecar-on-push
   namespace: open-data-hub-tenant
 spec:
   params:
@@ -23,11 +23,12 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/opendatahub/llm-d-inference-scheduler:odh-stable
+    value: quay.io/opendatahub/llm-d-routing-sidecar:odh-stable
   - name: dockerfile
-    value: Dockerfile.epp
-  - name: path-context
-    value: .
+    value: Dockerfile
+  - name: build-platforms
+    value:
+    - linux/x86_64
   pipelineRef:
     resolver: git
     params:
@@ -38,7 +39,7 @@ spec:
     - name: pathInRepo
       value: pipeline/multi-arch-container-build.yaml
   taskRunTemplate:
-    serviceAccountName: build-pipeline-llm-d-inference-scheduler-e850f
+    serviceAccountName: build-pipeline-llm-d-routing-sidecar
   workspaces:
   - name: git-auth
     secret:
