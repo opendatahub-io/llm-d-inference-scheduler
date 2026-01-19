@@ -25,10 +25,7 @@ spec:
   - name: output-image
     value: quay.io/opendatahub/llm-d-routing-sidecar:odh-stable
   - name: dockerfile
-    value: Dockerfile
-  - name: build-platforms
-    value:
-    - linux/x86_64
+    value: Dockerfile.sidecar
   pipelineRef:
     resolver: git
     params:
