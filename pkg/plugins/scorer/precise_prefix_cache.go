@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/llm-d/llm-d-kv-cache-manager/pkg/kvcache"
-	"github.com/llm-d/llm-d-kv-cache-manager/pkg/kvcache/kvevents"
-	preprocessing "github.com/llm-d/llm-d-kv-cache-manager/pkg/preprocessing/chat_completions"
+	"github.com/llm-d/llm-d-kv-cache/pkg/kvcache"
+	"github.com/llm-d/llm-d-kv-cache/pkg/kvcache/kvblock"
+	"github.com/llm-d/llm-d-kv-cache/pkg/kvevents"
+	preprocessing "github.com/llm-d/llm-d-kv-cache/pkg/preprocessing/chat_completions"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/plugins"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/scheduling/framework"
@@ -26,6 +27,9 @@ const (
 // PrecisePrefixCachePluginConfig holds the configuration for the
 // PrecisePrefixCacheScorer plugin.
 type PrecisePrefixCachePluginConfig struct {
+	// TokenProcessorConfig holds the configuration for the `kvblock.TokenProcessor` which is
+	// used to process tokens into KV-block keys.
+	TokenProcessorConfig *kvblock.TokenProcessorConfig `json:"tokenProcessorConfig"`
 	// IndexerConfig holds the configuration for the `kvcache.Indexer` which is
 	// used to score pods based on the KV-cache index state.
 	IndexerConfig *kvcache.Config `json:"indexerConfig"`
@@ -53,18 +57,24 @@ func PrecisePrefixCachePluginFactory(name string, rawParameters json.RawMessage,
 		KVEventsConfig: kvevents.DefaultConfig(),
 	}
 
-	// read hugging face token from environment variable if set
-	if token := os.Getenv("HF_TOKEN"); token != "" &&
-		parameters.IndexerConfig != nil &&
-		parameters.IndexerConfig.TokenizersPoolConfig != nil &&
-		parameters.IndexerConfig.TokenizersPoolConfig.HFTokenizerConfig != nil {
-		parameters.IndexerConfig.TokenizersPoolConfig.HFTokenizerConfig.HuggingFaceToken = token
-	}
-
 	if rawParameters != nil {
 		if err := json.Unmarshal(rawParameters, &parameters); err != nil {
 			return nil, fmt.Errorf("failed to parse %s plugin config: %w", PrecisePrefixCachePluginType, err)
 		}
+	}
+
+	// Apply HF token from environment if not already set
+	if token := os.Getenv("HF_TOKEN"); token != "" &&
+		parameters.IndexerConfig != nil &&
+		parameters.IndexerConfig.TokenizersPoolConfig != nil &&
+		parameters.IndexerConfig.TokenizersPoolConfig.HFTokenizerConfig != nil &&
+		parameters.IndexerConfig.TokenizersPoolConfig.HFTokenizerConfig.HuggingFaceToken == "" {
+		parameters.IndexerConfig.TokenizersPoolConfig.HFTokenizerConfig.HuggingFaceToken = token
+	}
+
+	// Validate model name is set
+	if parameters.IndexerConfig == nil || parameters.IndexerConfig.TokenizersPoolConfig == nil || parameters.IndexerConfig.TokenizersPoolConfig.ModelName == "" {
+		return nil, errors.New("modelName is required in indexerConfig.tokenizersPoolConfig")
 	}
 
 	scorer, err := New(handle.Context(), parameters)
@@ -85,8 +95,14 @@ func PrecisePrefixCachePluginFactory(name string, rawParameters json.RawMessage,
 // If the configuration is invalid or if the indexer fails to initialize,
 // an error is returned.
 func New(ctx context.Context, config PrecisePrefixCachePluginConfig) (*PrecisePrefixCacheScorer, error) {
+	if config.TokenProcessorConfig == nil {
+		config.TokenProcessorConfig = kvblock.DefaultTokenProcessorConfig()
+	}
+
+	tokenProcessor := kvblock.NewChunkedTokenDatabase(config.TokenProcessorConfig)
+
 	// initialize the indexer
-	kvCacheIndexer, err := kvcache.NewKVCacheIndexer(ctx, config.IndexerConfig)
+	kvCacheIndexer, err := kvcache.NewKVCacheIndexer(ctx, config.IndexerConfig, tokenProcessor)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create `kvcache.Indexer`: %w", err)
 	}
@@ -94,7 +110,7 @@ func New(ctx context.Context, config PrecisePrefixCachePluginConfig) (*PrecisePr
 	go kvCacheIndexer.Run(ctx)
 
 	// initialize the KV-events pool
-	pool := kvevents.NewPool(config.KVEventsConfig, kvCacheIndexer.KVBlockIndex())
+	pool := kvevents.NewPool(config.KVEventsConfig, kvCacheIndexer.KVBlockIndex(), tokenProcessor)
 	pool.Start(ctx)
 
 	return &PrecisePrefixCacheScorer{
@@ -186,8 +202,17 @@ func (s *PrecisePrefixCacheScorer) getScores(ctx context.Context, request *types
 			traceLogger.Info("Both chat/completions and completions present; defaulting to chat/completions")
 		}
 
-		renderReq := &preprocessing.RenderJinjaTemplateRequest{
-			Conversations:             make([]preprocessing.ChatMessage, 0),
+		// Convert messages to conversation format
+		conversations := make([]preprocessing.Conversation, len(request.Body.ChatCompletions.Messages))
+		for i, msg := range request.Body.ChatCompletions.Messages {
+			conversations[i] = preprocessing.Conversation{
+				Role:    msg.Role,
+				Content: msg.Content.Raw,
+			}
+		}
+
+		renderReq := &preprocessing.ApplyChatTemplateRequest{
+			Conversation:              [][]preprocessing.Conversation{conversations},
 			Tools:                     request.Body.ChatCompletions.Tools,
 			Documents:                 request.Body.ChatCompletions.Documents,
 			ChatTemplate:              request.Body.ChatCompletions.ChatTemplate,
@@ -197,16 +222,8 @@ func (s *PrecisePrefixCacheScorer) getScores(ctx context.Context, request *types
 			ChatTemplateKWArgs:        request.Body.ChatCompletions.ChatTemplateKWArgs,
 		}
 
-		// Convert messages to the format expected by the renderer
-		for _, msg := range request.Body.ChatCompletions.Messages {
-			renderReq.Conversations = append(renderReq.Conversations, preprocessing.ChatMessage{
-				Role:    msg.Role,
-				Content: msg.Content.Raw,
-			})
-		}
-
 		traceLogger.Info("Processing chat completion request",
-			"messagesCount", len(renderReq.Conversations),
+			"messagesCount", len(conversations),
 			"toolsCount", len(renderReq.Tools),
 			"documentsCount", len(renderReq.Documents))
 
