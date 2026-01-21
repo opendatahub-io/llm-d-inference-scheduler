@@ -13,7 +13,7 @@ metadata:
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: opendatahub-builds
-    appstudio.openshift.io/component: llm-d-routing-sidecar
+    appstudio.openshift.io/component: llm-d-routing-sidecar-ci
     pipelines.appstudio.openshift.io/type: build
   name: llm-d-routing-sidecar-on-pull-request
   namespace: open-data-hub-tenant
