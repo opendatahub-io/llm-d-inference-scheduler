@@ -11,7 +11,7 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/llm-d/llm-d-kv-cache-manager v0.3.1
 	github.com/onsi/ginkgo/v2 v2.25.3
-	github.com/onsi/gomega v1.38.2
+	github.com/onsi/gomega v1.39.0
 	github.com/openai/openai-go v1.12.0
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.75.1
