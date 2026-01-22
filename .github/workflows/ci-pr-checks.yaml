@@ -23,6 +23,9 @@ jobs:
             src:
               - '**/*.go'
               - '**/*.py'
+              - Dockerfile.epp
+              - Dockerfile.sidecar
+              - Makefile*
   lint-and-test:
     needs: check-changes
     if: ${{ needs.check-changes.outputs.src == 'true' }}
@@ -62,8 +65,7 @@ jobs:
       - name: Install dependencies
         run: |
           go mod tidy
-          sudo -E env "PATH=$PATH" make install-dependencies
-          sudo -E env "PATH=$PATH" make install-python-deps
+          sudo -E env "PATH=$PATH" make install-dependencies install-python-deps
 
       - name: Run lint checks
         uses: golangci/golangci-lint-action@v9
