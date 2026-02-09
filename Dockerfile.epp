@@ -22,6 +22,9 @@ RUN KV_CACHE_PKG=$(go list -m -f '{{.Dir}}' github.com/llm-d/llm-d-kv-cache) && 
 
 FROM registry.access.redhat.com/ubi9/python-312 AS python-builder
 
+# this is required to make it writable for '/opt/app-root/src/.cache/pip'
+USER root
+
 ARG TARGETARCH
 
 COPY --from=go-deps /workspace/kv-cache /workspace/kv-cache
