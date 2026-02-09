@@ -105,6 +105,9 @@ PYTHON_LDFLAGS := $(shell $(PYTHON_CONFIG) --ldflags --embed)
 CGO_CFLAGS := $(PYTHON_CFLAGS) '-I$(shell pwd)/lib'
 CGO_LDFLAGS := $(PYTHON_LDFLAGS) $(PYTHON_LIBS) '-L$(shell pwd)/lib' -ltokenizers -ldl -lm
 
+# Export CGO flags as environment variables for all targets
+export CGO_CFLAGS
+export CGO_LDFLAGS
 
 # Internal variables for generic targets
 epp_IMAGE = $(EPP_IMAGE)
