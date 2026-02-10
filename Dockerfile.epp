@@ -4,6 +4,10 @@ FROM registry.access.redhat.com/ubi9/go-toolset:1.24.6 AS go-deps
 
 WORKDIR /workspace
 
+# since we are using UBI which need root and GOPATH for later stage copy from  /go/pkg/mod
+USER root
+ENV GOPATH=/go
+
 # Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
@@ -14,16 +18,15 @@ COPY pkg/ pkg/
 
 RUN go mod download
 
+USER root
 # Copy Python wrapper and requirements from llm-d-kv-cache dependency
 # Extract version dynamically and copy to a known location
 RUN KV_CACHE_PKG=$(go list -m -f '{{.Dir}}' github.com/llm-d/llm-d-kv-cache) && \
     mkdir -p /workspace/kv-cache && \
     cp -r $KV_CACHE_PKG/* /workspace/kv-cache
 
-FROM registry.access.redhat.com/ubi9/python-312 AS python-builder
-
-# this is required to make it writable for '/opt/app-root/src/.cache/pip'
-USER root
+# cannot use registry.access.redhat.com/ubi9/python-312 because glibc is 2.34
+FROM python:3.12-slim  AS python-builder
 
 ARG TARGETARCH
 
@@ -45,6 +48,9 @@ RUN python3.12 -m venv /workspace/kv-cache/build/venv && \
 
 # Go build stage
 FROM registry.access.redhat.com/ubi9/go-toolset:1.24.6 AS go-builder
+
+# need root to install packages
+USER root
 
 ARG TARGETOS
 ARG TARGETARCH

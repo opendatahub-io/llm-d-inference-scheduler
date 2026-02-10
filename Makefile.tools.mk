@@ -194,6 +194,8 @@ setup-venv: detect-python ## Sets up the Python virtual environment.
 install-python-deps: setup-venv ## installs dependencies.
 	@printf "\033[33;1m==== Setting up Python virtual environment in $(VENV_DIR) ====\033[0m\n"
 	@echo "install vllm..."
+	@echo "Downloading Go modules..."
+	@go mod download
 	@KV_CACHE_PKG=$${KV_CACHE_PKG:-$$(go list -m -f '{{.Dir}}' github.com/llm-d/llm-d-kv-cache 2>/dev/null)}; \
 	if [ -z "$$KV_CACHE_PKG" ]; then \
 		echo "ERROR: kv-cache package not found."; \
