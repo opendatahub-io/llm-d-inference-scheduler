@@ -11,6 +11,8 @@
 main
 bin/
 
+*debug_bin*
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -33,3 +35,6 @@ go.work.sum
 .vscode
 
 vendor
+
+# Build output
+/build

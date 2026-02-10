@@ -21,6 +21,12 @@ const (
 
 	// defaultLRUSize is the maximum number of pods we'll consider in the cache
 	defaultLRUSize = 1024
+
+	// defaultPrefillProfile is the name of the prefill profile
+	//
+	// This is currently hardcoded until we have a defined proper config interface.
+	// (See also https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/2104/	)
+	defaultPrefillProfile = "prefill"
 )
 
 // compile-time type assertions
@@ -29,6 +35,9 @@ var _ requestcontrol.PreRequest = &NoHitLRU{}
 
 // NoHitLRUParameters defines the parameters for the NoHitLRU scorer.
 type NoHitLRUParameters struct {
+	// PrefixPluginType defines the type of the prefix cache plugin to read state from.
+	// Defaults to "prefix-cache-scorer".
+	PrefixPluginType string `json:"prefixPluginType"`
 	// PrefixPluginName defines the name of the prefix cache plugin to read state from.
 	// Defaults to "prefix-cache-scorer".
 	PrefixPluginName string `json:"prefixPluginName"`
@@ -69,10 +78,14 @@ func NoHitLRUFactory(name string, rawParameters json.RawMessage, handle plugins.
 
 // NewNoHitLRU creates a new NoHitLRU scorer
 func NewNoHitLRU(ctx context.Context, params *NoHitLRUParameters) *NoHitLRU {
+	prefixPluginType := prefix.PrefixCachePluginType
 	prefixPluginName := prefix.PrefixCachePluginType
 	lruSize := defaultLRUSize
 
 	if params != nil {
+		if params.PrefixPluginType != "" {
+			prefixPluginType = params.PrefixPluginType
+		}
 		if params.PrefixPluginName != "" {
 			prefixPluginName = params.PrefixPluginName
 		}
@@ -88,10 +101,10 @@ func NewNoHitLRU(ctx context.Context, params *NoHitLRUParameters) *NoHitLRU {
 	}
 
 	return &NoHitLRU{
-		typedName:        plugins.TypedName{Type: NoHitLRUType},
-		lruCache:         lruCache,
-		prefixPluginName: prefixPluginName,
-		pluginState:      plugins.NewPluginState(ctx),
+		typedName:             plugins.TypedName{Type: NoHitLRUType},
+		lruCache:              lruCache,
+		prefixPluginTypedName: plugins.TypedName{Type: prefixPluginType, Name: prefixPluginName},
+		pluginState:           plugins.NewPluginState(ctx),
 	}
 }
 
@@ -99,10 +112,10 @@ func NewNoHitLRU(ctx context.Context, params *NoHitLRUParameters) *NoHitLRU {
 // This can help evenly distribute cache growth, since cold requests result in more
 // new KV blocks.
 type NoHitLRU struct {
-	typedName        plugins.TypedName
-	lruCache         *lru.Cache[string, struct{}] // pod name -> dummy value (we only care about order)
-	prefixPluginName string
-	pluginState      *plugins.PluginState
+	typedName             plugins.TypedName
+	lruCache              *lru.Cache[string, struct{}] // pod name -> dummy value (we only care about order)
+	prefixPluginTypedName plugins.TypedName
+	pluginState           *plugins.PluginState
 }
 
 // TypedName returns the typed name of the plugin.
@@ -123,7 +136,7 @@ func (s *NoHitLRU) isColdRequest(ctx context.Context, cycleState *types.CycleSta
 
 	// Read prefix cache state to determine if this is a cold request
 	// This is treated as an optimization - if the state isn't available, we assume cold request
-	prefixState, err := types.ReadCycleStateKey[*prefix.SchedulingContextState](cycleState, plugins.StateKey(s.prefixPluginName))
+	prefixState, err := types.ReadCycleStateKey[*prefix.SchedulingContextState](cycleState, plugins.StateKey(s.prefixPluginTypedName.String()))
 
 	if err != nil {
 		logger.Info("No prefix cache state found, treating as cold request for LRU optimization", "error", err)
@@ -279,19 +292,23 @@ func (s *NoHitLRU) PreRequest(ctx context.Context, request *types.LLMRequest, sc
 		return
 	}
 
-	// Get the primary profile's target pod
-	primaryProfile := schedulingResult.ProfileResults[schedulingResult.PrimaryProfileName]
-	if primaryProfile == nil || len(primaryProfile.TargetPods) == 0 {
-		logger.Info("No target pod in primary profile")
-		return
+	if targetProfile, ok := schedulingResult.ProfileResults[schedulingResult.PrimaryProfileName]; ok && targetProfile != nil && len(targetProfile.TargetPods) != 0 {
+		s.moveTargetPodToFront(ctx, request, targetProfile, schedulingResult.PrimaryProfileName)
 	}
+	if targetProfile, ok := schedulingResult.ProfileResults[defaultPrefillProfile]; ok && targetProfile != nil && len(targetProfile.TargetPods) != 0 {
+		s.moveTargetPodToFront(ctx, request, targetProfile, defaultPrefillProfile)
+	}
+}
 
-	targetPod := primaryProfile.TargetPods[0]
+func (s *NoHitLRU) moveTargetPodToFront(ctx context.Context, request *types.LLMRequest, targetProfile *types.ProfileRunResult, profileName string) {
+	logger := log.FromContext(ctx).V(logutil.DEBUG)
+
+	targetPod := targetProfile.TargetPods[0]
 	podName := targetPod.GetPod().NamespacedName.String()
 
 	// Move the pod to the front of the LRU.
 	var present struct{} // dummy value
 	s.lruCache.Add(podName, present)
 
-	logger.Info("Updated LRU cache for cold request", "pod", podName, "requestId", request.RequestId)
+	logger.Info("Updated LRU cache for cold request", "profile", profileName, "pod", podName, "requestId", request.RequestId)
 }
