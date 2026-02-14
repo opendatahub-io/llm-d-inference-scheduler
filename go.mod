@@ -12,7 +12,7 @@ require (
 	github.com/llm-d/llm-d-kv-cache-manager v0.3.1
 	github.com/onsi/ginkgo/v2 v2.25.3
 	github.com/onsi/gomega v1.38.2
-	github.com/openai/openai-go v1.12.0
+	github.com/openai/openai-go/v3 v3.22.0
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.75.1
 	k8s.io/api v0.34.1
@@ -83,7 +83,7 @@ require (
 	github.com/spf13/cobra v1.9.1 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
-	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
