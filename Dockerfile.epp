@@ -1,18 +1,6 @@
 ## Minimal runtime Dockerfile (microdnf-only, no torch, wrapper in site-packages)
-# Build Stage: using Go 1.24 image
-FROM registry.access.redhat.com/ubi9/go-toolset:1.24 AS builder
-
-ARG TARGETOS
-ARG TARGETARCH
-
-USER root
-
-# Install build tools
-# The builder is based on UBI8, so we need epel-release-9.
-RUN dnf install -y 'https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm' && \
-    dnf install -y gcc-c++ libstdc++ libstdc++-devel clang zeromq-devel pkgconfig python3.12-devel python3.12-pip git && \
-    dnf clean all
-# python3.12-devel needed for CGO compilation (Python headers and python3.12-config for linker flags)
+# Go dependencies stage: download go modules and extract kv-cache
+FROM quay.io/projectquay/golang:1.24 AS go-deps
 
 WORKDIR /workspace
 
@@ -28,16 +16,59 @@ RUN go mod download
 
 # Copy Python wrapper and requirements from llm-d-kv-cache dependency
 # Extract version dynamically and copy to a known location
-RUN KVCACHE_MANAGER_VERSION=$(go list -m -f '{{.Version}}' github.com/llm-d/llm-d-kv-cache-manager) && \
-    mkdir -p /workspace/kv-cache-manager-wrapper && \
-    cp $(go env GOMODCACHE)/github.com/llm-d/llm-d-kv-cache-manager@${KVCACHE_MANAGER_VERSION}/pkg/preprocessing/chat_completions/render_jinja_template_wrapper.py \
-       /workspace/kv-cache-manager-wrapper/ && \
-    cp $(go env GOMODCACHE)/github.com/llm-d/llm-d-kv-cache-manager@${KVCACHE_MANAGER_VERSION}/pkg/preprocessing/chat_completions/requirements.txt \
-       /workspace/kv-cache-manager-wrapper/requirements.txt
+RUN KV_CACHE_PKG=$(go list -m -f '{{.Dir}}' github.com/llm-d/llm-d-kv-cache) && \
+    mkdir -p /workspace/kv-cache && \
+    cp -r $KV_CACHE_PKG/* /workspace/kv-cache
 
-# HuggingFace tokenizer bindings (static lib)
-RUN mkdir -p lib
-# Ensure that the RELEASE_VERSION matches the one used in the imported llm-d-kv-cache-manager version
+FROM python:3.12-slim AS python-builder
+
+ARG TARGETARCH
+
+COPY --from=go-deps /workspace/kv-cache /workspace/kv-cache
+WORKDIR /workspace/kv-cache
+
+# Create venv and install vLLM based on architecture using pre-built wheels
+RUN python3.12 -m venv /workspace/kv-cache/build/venv && \
+    . /workspace/kv-cache/build/venv/bin/activate && \
+    pip install --upgrade pip && \
+    VLLM_VERSION="0.14.0" && \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+        pip install https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}+cpu-cp38-abi3-manylinux_2_35_aarch64.whl; \
+    elif [ "$TARGETARCH" = "amd64" ]; then \
+        pip install https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}+cpu-cp38-abi3-manylinux_2_35_x86_64.whl --extra-index-url https://download.pytorch.org/whl/cpu; \
+    else \
+        echo "ERROR: Unsupported architecture: $TARGETARCH. Only arm64 and amd64 are supported." && exit 1; \
+    fi
+
+# Go build stage
+FROM quay.io/projectquay/golang:1.24 AS go-builder
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG PYTHON_VERSION=3.12
+ENV PYTHON=python${PYTHON_VERSION}
+
+# Install build tools
+# The builder is based on UBI8, so we need epel-release-8.
+# ${PYTHON}-devel needed for CGO compilation (Python headers and ${PYTHON}-config for linker flags)
+RUN dnf install -y 'https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm' && \
+    dnf install -y gcc-c++ libstdc++ libstdc++-devel clang zeromq-devel pkgconfig ${PYTHON}-devel ${PYTHON}-pip git && \
+    dnf clean all
+
+COPY --from=go-deps /workspace /workspace
+COPY --from=go-deps /go/pkg/mod /go/pkg/mod
+
+WORKDIR /workspace
+
+COPY Makefile* ./
+
+COPY --from=python-builder /workspace/kv-cache/pkg/preprocessing/chat_completions /workspace/kv-cache/pkg/preprocessing/chat_completions
+RUN make setup-venv
+COPY --from=python-builder /workspace/kv-cache/build/venv/lib/python3.12/site-packages /workspace/build/venv/lib/python3.12/site-packages
+
+ENV PYTHONPATH=/workspace/kv-cache/pkg/preprocessing/chat_completions:/workspace/build/venv/lib/python3.12/site-packages
+RUN python3.12 -c "import tokenizer_wrapper"  # verify tokenizer_wrapper is correctly installed
+
 ARG RELEASE_VERSION=v1.22.1
 RUN TOKENIZER_VERSION=${RELEASE_VERSION} make build-epp
 
