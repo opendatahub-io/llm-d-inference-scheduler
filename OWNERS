@@ -1,26 +1,29 @@
 approvers:
-- elevran
-- kfswain
-- nilig
-- nirrozenbaum
-- shmuelk
-- vMaroon
-
+  - andresllh
+  - bartoszmajsak
+  - brettmthompson
+  - danielezonca
+  - israel-hdez
+  - Jooho
+  - mholder6
+  - mwaykole
+  - pierDipi
+  - spolti
+  - terrytangyuan
+  - VedantMahabaleshwarkar
+  - vivekk16
+  - llm-d-team
 reviewers:
-- elevran
-- kfswain
-- nilig
-- nirrozenbaum
-- shmuelk
-- vMaroon
-
-# Auto-assign configuration for global assignment
-# Works in addition to GitHub's built-in CODEOWNERS functionality
-# Implemented via a custom GitHub Action
-auto-assign:
-  - elevran
-  - kfswain
-  - nilig
-  - nirrozenbaum
-  - shmuelk
-  - vMaroon
+  - andresllh
+  - bartoszmajsak
+  - brettmthompson
+  - israel-hdez
+  - Jooho
+  - mholder6
+  - mwaykole
+  - pierDipi
+  - spolti
+  - terrytangyuan
+  - VedantMahabaleshwarkar
+  - vivekk16
+  - llm-d-team
