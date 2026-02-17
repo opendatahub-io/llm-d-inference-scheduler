@@ -27,6 +27,8 @@ import (
 )
 
 const (
+	// kindClusterName is the name of the Kind cluster created for e2e tests.
+	kindClusterName = "e2e-tests"
 	// defaultReadyTimeout is the default timeout for a resource to report a ready state.
 	defaultReadyTimeout = 3 * time.Minute
 	// defaultInterval is the default interval to check if a resource exists or ready conditions.
@@ -54,15 +56,15 @@ const (
 )
 
 var (
-	port string = env.GetEnvString("E2E_PORT", "30080", ginkgo.GinkgoLogr)
+	port        string = env.GetEnvString("E2E_PORT", "30080", ginkgo.GinkgoLogr)
+	metricsPort string = env.GetEnvString("E2E_METRICS_PORT", "32090", ginkgo.GinkgoLogr)
 
 	testConfig *testutils.TestConfig
 
 	containerRuntime = env.GetEnvString("CONTAINER_RUNTIME", "docker", ginkgo.GinkgoLogr)
 	eppImage         = env.GetEnvString("EPP_IMAGE", "ghcr.io/llm-d/llm-d-inference-scheduler:dev", ginkgo.GinkgoLogr)
-	vllmSimImage     = env.GetEnvString("VLLM_SIMULATOR_IMAGE", "ghcr.io/llm-d/llm-d-inference-sim:dev", ginkgo.GinkgoLogr)
+	vllmSimImage     = env.GetEnvString("VLLM_SIMULATOR_IMAGE", "ghcr.io/llm-d/llm-d-inference-sim:latest", ginkgo.GinkgoLogr)
 	sideCarImage     = env.GetEnvString("SIDECAR_IMAGE", "ghcr.io/llm-d/llm-d-routing-sidecar:dev", ginkgo.GinkgoLogr)
-
 	// nsName is the namespace in which the K8S objects will be created
 	nsName = env.GetEnvString("NAMESPACE", "default", ginkgo.GinkgoLogr)
 
@@ -80,7 +82,8 @@ var (
 	infPoolObjects        []string
 	createdNameSpace      bool
 
-	portForwardSession *gexec.Session
+	portForwardSession    *gexec.Session
+	eppPortForwardSession *gexec.Session
 )
 
 func TestEndToEnd(t *testing.T) {
@@ -108,11 +111,25 @@ var _ = ginkgo.BeforeSuite(func() {
 })
 
 var _ = ginkgo.AfterSuite(func() {
-	if k8sContext != "" {
-		// Used an existing Kubernetes context
+	if k8sContext == "" {
+		// delete kind cluster we created
+		ginkgo.By("Deleting kind cluster " + kindClusterName)
+		command := exec.Command("kind", "delete", "cluster", "--name", kindClusterName)
+		session, err := gexec.Start(command, ginkgo.GinkgoWriter, ginkgo.GinkgoWriter)
+		if err != nil {
+			ginkgo.GinkgoLogr.Error(err, "Failed to delete kind cluster")
+		} else {
+			gomega.Eventually(session).WithTimeout(60 * time.Second).Should(gexec.Exit())
+		}
+	} else {
+		// Used an existing Kubernetes context, clean up created resources
 		// Stop port-forward
 		if portForwardSession != nil {
 			portForwardSession.Terminate()
+		}
+
+		if eppPortForwardSession != nil {
+			eppPortForwardSession.Terminate()
 		}
 
 		// cleanup created objects
@@ -129,18 +146,12 @@ var _ = ginkgo.AfterSuite(func() {
 			err := testConfig.KubeCli.CoreV1().Namespaces().Delete(testConfig.Context, nsName, metav1.DeleteOptions{})
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 		}
-		return
 	}
-
-	command := exec.Command("kind", "delete", "cluster", "--name", "e2e-tests")
-	session, err := gexec.Start(command, ginkgo.GinkgoWriter, ginkgo.GinkgoWriter)
-	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-	gomega.Eventually(session).WithTimeout(600 * time.Second).Should(gexec.Exit(0))
 })
 
 // Create the Kubernetes cluster for the E2E tests and load the local images
 func setupK8sCluster() {
-	command := exec.Command("kind", "create", "cluster", "--name", "e2e-tests", "--config", "-")
+	command := exec.Command("kind", "create", "cluster", "--name", kindClusterName, "--config", "-")
 	stdin, err := command.StdinPipe()
 	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 	go func() {
@@ -149,6 +160,7 @@ func setupK8sCluster() {
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 		}()
 		clusterConfig := strings.ReplaceAll(kindClusterConfig, "${PORT}", port)
+		clusterConfig = strings.ReplaceAll(clusterConfig, "${METRICS_PORT}", metricsPort)
 		_, err := io.WriteString(stdin, clusterConfig)
 		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 	}()
@@ -165,7 +177,7 @@ func kindLoadImage(image string) {
 	tempDir := ginkgo.GinkgoT().TempDir()
 	target := tempDir + "/container.tar"
 
-	ginkgo.By(fmt.Sprintf("Loading %s into the cluster e2e-tests using %s", image, containerRuntime))
+	ginkgo.By(fmt.Sprintf("Loading %s into the cluster %s using %s", image, kindClusterName, containerRuntime))
 
 	_, err := exec.LookPath(containerRuntime)
 	gomega.Expect(err).ShouldNot(gomega.HaveOccurred(), "Could not find %s in PATH", containerRuntime)
@@ -182,7 +194,7 @@ func kindLoadImage(image string) {
 	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 	gomega.Eventually(session).WithTimeout(600 * time.Second).Should(gexec.Exit(0))
 
-	command = exec.Command("kind", "--name", "e2e-tests", "load", "image-archive", target)
+	command = exec.Command("kind", "--name", kindClusterName, "load", "image-archive", target)
 	session, err = gexec.Start(command, ginkgo.GinkgoWriter, ginkgo.GinkgoWriter)
 	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 	gomega.Eventually(session).WithTimeout(600 * time.Second).Should(gexec.Exit(0))
@@ -271,10 +283,11 @@ func createInferencePool(numTargetPorts int, toDelete bool) []string {
 	}
 
 	infPoolYaml := testutils.ReadYaml(inferExtManifest)
-	targetPorts := ""
+	var b strings.Builder
 	for idx := range numTargetPorts {
-		targetPorts += fmt.Sprintf("\n  - number: %d", 8000+idx)
+		fmt.Fprintf(&b, "\n  - number: %d", 8000+idx)
 	}
+	targetPorts := b.String()
 	infPoolYaml = substituteMany(infPoolYaml,
 		map[string]string{
 			"${POOL_NAME}":    poolName,
@@ -282,6 +295,22 @@ func createInferencePool(numTargetPorts int, toDelete bool) []string {
 		})
 
 	return testutils.CreateObjsFromYaml(testConfig, infPoolYaml)
+}
+
+func startEPPMetricsPortForward() {
+	pods, err := testConfig.KubeCli.CoreV1().Pods(nsName).List(testConfig.Context, metav1.ListOptions{
+		LabelSelector: "app=e2e-epp",
+	})
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(pods.Items).NotTo(gomega.BeEmpty())
+
+	eppPodName := pods.Items[0].Name
+	command := exec.Command("kubectl", "port-forward", "pod/"+eppPodName, metricsPort+":9090",
+		"--context="+k8sContext, "--namespace="+nsName)
+	eppPortForwardSession, err = gexec.Start(command, ginkgo.GinkgoWriter, ginkgo.GinkgoWriter)
+	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+	// Give it a moment to establish
+	time.Sleep(3 * time.Second)
 }
 
 const kindClusterConfig = `
@@ -294,5 +323,8 @@ nodes:
     protocol: TCP
   - containerPort: 30081
     hostPort: 30081
+    protocol: TCP
+  - containerPort: 32090
+    hostPort: ${METRICS_PORT}
     protocol: TCP
 `

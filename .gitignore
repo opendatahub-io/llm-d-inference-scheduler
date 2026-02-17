@@ -11,6 +11,8 @@
 main
 bin/
 
+*debug_bin*
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -27,9 +29,13 @@ go.work.sum
 # Environment Files
 .DS_Store
 .env
+CLAUDE.md
 
 # IDE files
 .idea
 .vscode
 
 vendor
+
+# Build output
+/build

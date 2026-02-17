@@ -1,8 +1,8 @@
-# Disaggregated Prefill/Decode Inference Serving in llm-d
+# Disaggregated Prefill/Decode Inference Serving in LLM-D
 
 ## Overview
 
-This document describes the architecture and request lifecycle for enabling **disaggregated prefill and decode (P/D)** inference execution in the llm-d router. The architecture aims to improve flexibility, scalability, and performance by enabling separation of prefill and decode stages onto different workers.
+This document describes the architecture and request lifecycle for enabling **disaggregated prefill and decode (P/D)** inference execution in the LLM-D router. The architecture aims to improve flexibility, scalability, and performance by enabling separation of prefill and decode stages onto different workers.
 
 This evolved version removes the requirement for sidecars on the **prefill node**, simplifying deployment while maintaining orchestration from the **decode node**.
 
@@ -25,7 +25,7 @@ This evolved version removes the requirement for sidecars on the **prefill node*
 | **Decode Worker**    | Handles decode stage and contains the sidecar for coordination       |
 | **Sidecar (Decode)** | Orchestrates communication with prefill worker and manages lifecycle |
 | **Envoy Proxy**      | Accepts OpenAI-style requests and forwards them to EPP               |
-| **EPP**              | End Point Picker, makes scheduling decisions                     |
+| **EPP**              | Endpoint Picker, makes scheduling decisions                     |
 
 ---
 
@@ -37,7 +37,7 @@ This evolved version removes the requirement for sidecars on the **prefill node*
 2. **EPP Scheduling Decision**
    - EPP evaluates:
      - Prompt length
-     - KV cache hit probability
+     - KV-cache hit probability
      - System and pod load
    - Selects either:
      - **Single node** path (decode handles all)
@@ -47,10 +47,10 @@ This evolved version removes the requirement for sidecars on the **prefill node*
 3. **Execution**
    - Request lands on Decode Worker (as selected by EPP)
    - Decode sidecar coordinates:
-     - If `prefill_worker_id == nil`, runs both stages locally by passing request to local vllm
-     - If split:
-       - Sends prefill job to Prefill Worker with a special header `do_remote_decode=true`
-       - Upon receiving response from Prefill Worker runs decode stage
+     - If `x-prefiller-host-port` header doesn't exist, runs both stages locally by passing request to local vLLM
+     - If `x-prefiller-host-port` header exists:
+       - Sends the prefill job to the selected Prefill Worker with a special request field `do_remote_decode=true`
+       - Upon receiving the response from the Prefill Worker runs the decode stage
 
 4. **Response Flow**
    - Response flows from decode sidecar → Envoy → EPP → User
@@ -59,11 +59,34 @@ This evolved version removes the requirement for sidecars on the **prefill node*
 
 ## Architectural Details
 
+
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant I as Inference Gateway
+  participant DS as Decode Worker Sidecar
+  participant D as Decode Worker(vLLM)
+  participant P as Prefill Worker(vLLM)
+
+
+  C->>I: Inference Request
+  I->>DS: Request is sent to the Decode Worker Sidecar <br/> with the selected Prefill worker set in a header.
+  DS->>P: Remote Prefill with prompt(max_tokens=1)
+  P-->>P: Run prefill
+  P->>DS: Remote kv parameters
+  DS->> D: Request is sent to the Decode Worker (vLLM) with remote_prefill true, <br/>prefill ID and memory block IDs 
+        D-->>P: Read kv-cache
+        D-->>D: Schedule decode into queue & run decode
+  D->>DS: Inference Response
+  DS->>I: Inference Response
+  I->>C: Inference Response
+```
+
 ### Sidecar Responsibilities (Decode Only)
 
 - Receives EPP metadata (decode pod, optional prefill pod)
 - Sends request to prefill
-- Waits and validates result
+- Waits for the result and validates it
 - Launches local decode job
 - Sends final response
 
@@ -73,33 +96,21 @@ This evolved version removes the requirement for sidecars on the **prefill node*
 
 ## Worker Selection Logic
 
-- **Decode Worker**:
-  - Prefer longest prefix match / KV cache utilization (depends on available scorers)
-
-- **Prefill Worker**:
-  - High prefix-cache hit rate
-  - Low load
+- **Decode/Prefill Worker**:
+  - Prefer longest prefix match/kv-cache utilization (depends on available scorers) and low load
 
 > **Skip prefill worker** when:
-> - Prefix match/kv cache hit is high
+> - Prefix match/kv-cache hit is high
 > - Prompt is very short
 
 ---
 
-## vLLM and LMCache Integration
-
-- **vLLM changes** (or wrapper APIs):
-  - `save()`, `load()` APIs
-  - `done_sending`, `done_receiving`
-  - Connector API supporting async transfer
-
----
 
 ## Drawbacks & Limitations
 
-- Slight increase in TTFT for split P/D
+- Slight increase in TTFT for disaggregated P/D 
 - Possibility of stranded memory on prefill crash
-- Need for timeout and retry logic
+- The need for timeout and retry logic
 
 ---
 
@@ -115,17 +126,17 @@ This evolved version removes the requirement for sidecars on the **prefill node*
 ## Future Considerations
 
 - Cache coordinate
-- Pre allocation of kv blocks in decode node , push cache from prefill to decode worker during calculation
+- Pre-allocation of kv blocks in the decode node, push cache from the prefill to the decode worker during calculation
 
 ---
 
 ## Integrating External Prefill/Decode Workloads
 
-The llm-d inference scheduler supports integration with external disaggregated prefill/decode (P/D) workloads other inference frameworks that follow the same P/D separation pattern but use **different Kubernetes Pod labeling conventions**.
+The LLM-D inference scheduler supports integration with external disaggregated prefill/decode (P/D) workloads other inference frameworks that follow the same P/D separation pattern but use **different Kubernetes Pod labeling conventions**.
 
 ### Labeling Convention Flexibility
 
-By default, llm-d uses the label key `llm-d.ai/role` with values:
+By default, LLM-D uses the label key `llm-d.ai/role` with values:
 - `"prefill"` → prefill-only pods
 - `"decode"` or `"both"` → decode-capable pods  
 
@@ -144,6 +155,8 @@ Below is a minimal `EndpointPickerConfig` that enables integration with workload
 ```yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha1
 kind: EndpointPickerConfig
+featureGates:
+- prepareDataPlugins
 plugins:
   # Prefill selection: match Pods with label role=prefill
   - type: by-label
@@ -159,15 +172,18 @@ plugins:
       validValues: ["decode"]
   - type: prefix-cache-scorer
     parameters:
-      hashBlockSize: 5
+      autoTune: false
+      blockSize: 5
       maxPrefixBlocksToMatch: 256
       lruCapacityPerServer: 31250
   - type: max-score-picker
   - type: prefill-header-handler
-  - type: pd-profile-handler
+  - type: prefix-based-pd-decider
     parameters:
-      threshold: 0
-      hashBlockSize: 5
+      nonCachedTokens: 8
+  - type: pd-profile-handler
+    parameters:    
+      deciderPluginName: prefix-based-pd-decider
       primaryPort: 8000
 schedulingProfiles:
   - name: prefill
@@ -175,13 +191,11 @@ schedulingProfiles:
       - pluginRef: "prefill-pods"
       - pluginRef: "max-score-picker"
       - pluginRef: "prefix-cache-scorer"
-        weight: 2
   - name: decode
     plugins:
       - pluginRef: "decode-pods"
       - pluginRef: "max-score-picker"
       - pluginRef: "prefix-cache-scorer"
-        weight: 2
 ```
 
 ---
@@ -189,6 +203,59 @@ schedulingProfiles:
 ## Diagram
 
 ![Disaggregated Prefill/Decode Architecture](./images/dp_architecture.png)
+
+--- 
+## PD Deciders
+
+PD deciders are pd handler plugins responsible for determining whether disaggregated P/D should be executed for a given request, based on the properties of the request prompt.
+
+ 
+### Prefix-Based PD Decider
+
+The `prefix-based-pd-decider` plugin makes the disaggregation decision according to the length of the non-cached suffix of the prompt relative to tokens already cached on the selected decode pod.
+
+**How It Works**
+- Once a decode pod is selected, the decider checks how many tokens from the incoming prompt have already been sent to this pod
+
+- If the remaining non-cached suffix length is longer than the configured threshold (nonCachedTokens), disaggregation is triggered — the prefill will run remotely on a prefill pod, and decode locally on the decode pod
+
+- If the non-cached suffix is shorter or equal to the threshold, the full request runs locally on the decode worker without remote prefill
+
+**Configuration**
+```yaml
+- type: prefix-based-pd-decider
+  parameters:
+    nonCachedTokens: 8
+```
+
+**Parameter:**
+
+- `nonCachedTokens`: Number of non-cached tokens that trigger disaggregation
+  - If set to 0, disaggregation always occurs for all requests
+
+**Feature Gate Requirement**
+To activate this decider, ensure the following feature gate is enabled in your EndpointPickerConfig
+
+```yaml
+featureGates:
+- prepareDataPlugins
+```
+
+
+### Always-Disagg PD Decider
+The `always-disagg-pd-decider` is a simpler alternative used mainly for testing or benchmarking.
+It always triggers disaggregation, regardless of prefix cache state or prompt characteristics.
+
+**Configuration example:**
+
+```yaml
+- type: always-disagg-pd-decider
+```
+
+**Notes:**
+This plugin accepts no parameters.
+
+It’s useful for validating end-to-end prefill/decode splitting and comparing system performance under forced disaggregation.
 
 ---
 
