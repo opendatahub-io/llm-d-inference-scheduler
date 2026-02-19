@@ -34,6 +34,6 @@ RUN go build -a -tags strictfipsruntime -o bin/pd-sidecar \
 FROM registry.access.redhat.com/ubi9/ubi-micro:9.7
 WORKDIR /
 COPY --from=builder /workspace/bin/pd-sidecar /app/pd-sidecar
-USER 1001:1001
+USER 65532:65532
 
 ENTRYPOINT ["/app/pd-sidecar"]
