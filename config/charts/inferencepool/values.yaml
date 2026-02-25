@@ -6,6 +6,7 @@ inferenceExtension:
     tag: main
     pullPolicy: Always
   extProcPort: 9002
+  failureMode: "FailOpen"
   env: []
   pluginsConfigFile: "default-plugins.yaml"
   # Define additional container ports
