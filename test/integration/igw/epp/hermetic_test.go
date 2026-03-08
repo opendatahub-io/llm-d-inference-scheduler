@@ -185,7 +185,7 @@ func TestFullDuplexStreamed_KubeInferenceObjectiveRequest(t *testing.T) {
 			},
 			wantResponses: ExpectReject(
 				envoyTypePb.StatusCode_BadRequest,
-				"inference gateway: BadRequest - error unmarshaling request bodyMap",
+				"inference error: BadRequest - error unmarshaling request bodyMap",
 			),
 		},
 		{
@@ -214,7 +214,7 @@ func TestFullDuplexStreamed_KubeInferenceObjectiveRequest(t *testing.T) {
 			requests: integration.ReqHeaderOnly(map[string]string{"content-type": "application/json"}),
 			pods:     nil,
 			wantResponses: ExpectReject(envoyTypePb.StatusCode_InternalServerError,
-				"inference gateway: Internal - no pods available in datastore"),
+				"inference error: Internal - no pods available in datastore"),
 		},
 		{
 			name: "request missing model field",
@@ -223,7 +223,7 @@ func TestFullDuplexStreamed_KubeInferenceObjectiveRequest(t *testing.T) {
 				`{"prompt":"hello world"}`,
 			),
 			wantResponses: ExpectReject(envoyTypePb.StatusCode_BadRequest,
-				"inference gateway: BadRequest - model not found in request body"),
+				"inference error: BadRequest - model not found in request body"),
 		},
 
 		// --- Subsetting & Metadata ---
@@ -257,7 +257,7 @@ func TestFullDuplexStreamed_KubeInferenceObjectiveRequest(t *testing.T) {
 				P(1, 0, 0.1, "foo", modelSQLLoraTarget),
 			},
 			wantResponses: ExpectReject(envoyTypePb.StatusCode_ServiceUnavailable,
-				"inference gateway: ServiceUnavailable - failed to find candidate pods for serving the request"),
+				"inference error: ServiceUnavailable - failed to find candidate pods for serving the request"),
 		},
 
 		// --- Request Modification (Passthrough & Rewrite) ---
