@@ -101,8 +101,11 @@ func main() {
 			"are assumed to be named tls.crt and tls.key, respectively. If not set, and secureProxy is enabled, "+
 			"then a self-signed certificate is used (for testing).")
 	enableSSRFProtection := pflag.Bool("enable-ssrf-protection", false, "enable SSRF protection using InferencePool allowlisting")
-	inferencePoolNamespace := pflag.String("inference-pool-namespace", os.Getenv("INFERENCE_POOL_NAMESPACE"), "the Kubernetes namespace to watch for InferencePool resources (defaults to INFERENCE_POOL_NAMESPACE env var)")
-	inferencePoolName := pflag.String("inference-pool-name", os.Getenv("INFERENCE_POOL_NAME"), "the specific InferencePool name to watch (defaults to INFERENCE_POOL_NAME env var)")
+	inferencePool := pflag.String("inference-pool", os.Getenv("INFERENCE_POOL"), "InferencePool in namespace/name or name format (e.g., default/my-pool or my-pool). A single name implies the 'default' namespace. Can also use INFERENCE_POOL env var.")
+	// Deprecated: use --inference-pool instead
+	deprecatedInferencePoolNamespace := pflag.String("inference-pool-namespace", os.Getenv("INFERENCE_POOL_NAMESPACE"), "DEPRECATED: use --inference-pool instead. The Kubernetes namespace for the InferencePool.")
+	// Deprecated: use --inference-pool instead
+	deprecatedInferencePoolName := pflag.String("inference-pool-name", os.Getenv("INFERENCE_POOL_NAME"), "DEPRECATED: use --inference-pool instead. The specific InferencePool name.")
 	enablePrefillerSampling := pflag.Bool("enable-prefiller-sampling", func() bool { b, _ := strconv.ParseBool(os.Getenv("ENABLE_PREFILLER_SAMPLING")); return b }(), "if true, the target prefill instance will be selected randomly from among the provided prefill host values")
 	poolGroup := pflag.String("pool-group", proxy.DefaultPoolGroup, "group of the InferencePool this Endpoint Picker is associated with.")
 
@@ -183,14 +186,43 @@ func main() {
 		}
 	}
 
-	// Determine namespace and pool name for SSRF protection
+	// Parse and validate InferencePool for SSRF protection
+	var inferencePoolNamespace, inferencePoolName string
 	if *enableSSRFProtection {
-		if *inferencePoolNamespace == "" {
-			logger.Info("Error: --inference-pool-namespace or INFERENCE_POOL_NAMESPACE environment variable is required when --enable-ssrf-protection is true")
+		// Prefer --inference-pool over deprecated flags
+		switch {
+		case *inferencePool != "":
+			if *deprecatedInferencePoolName != "" || *deprecatedInferencePoolNamespace != "" {
+				logger.Info("Warning: --inference-pool takes precedence over deprecated --inference-pool-name/--inference-pool-namespace flags")
+			}
+			parts := strings.SplitN(*inferencePool, "/", 2)
+			if len(parts) == 1 {
+				// Single name implies "default" namespace
+				inferencePoolNamespace = "default"
+				inferencePoolName = parts[0]
+			} else {
+				if parts[0] == "" || parts[1] == "" {
+					logger.Info("Error: --inference-pool must be in namespace/name or name format (e.g., default/my-pool or my-pool)")
+					return
+				}
+				inferencePoolNamespace = parts[0]
+				inferencePoolName = parts[1]
+			}
+		case *deprecatedInferencePoolName != "":
+			// Fall back to deprecated flags
+			logger.Info("Warning: using deprecated --inference-pool-name/--inference-pool-namespace flags, please migrate to --inference-pool")
+			inferencePoolName = *deprecatedInferencePoolName
+			inferencePoolNamespace = *deprecatedInferencePoolNamespace
+			if inferencePoolNamespace == "" {
+				inferencePoolNamespace = "default"
+			}
+		default:
+			logger.Info("Error: --inference-pool is required when --enable-ssrf-protection is true")
 			return
 		}
-		if *inferencePoolName == "" {
-			logger.Info("Error: --inference-pool-name or INFERENCE_POOL_NAME environment variable is required when --enable-ssrf-protection is true")
+
+		if inferencePoolName == "" {
+			logger.Info("Error: InferencePool name must not be empty")
 			return
 		}
 
@@ -220,7 +252,7 @@ func main() {
 	}
 
 	// Create SSRF protection validator
-	validator, err := proxy.NewAllowlistValidator(*enableSSRFProtection, *poolGroup, *inferencePoolNamespace, *inferencePoolName)
+	validator, err := proxy.NewAllowlistValidator(*enableSSRFProtection, *poolGroup, inferencePoolNamespace, inferencePoolName)
 	if err != nil {
 		logger.Error(err, "failed to create SSRF protection validator")
 		return
