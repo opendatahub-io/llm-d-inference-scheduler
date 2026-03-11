@@ -1,8 +1,6 @@
 module github.com/llm-d/llm-d-inference-scheduler
 
-go 1.24.1
-
-toolchain go1.24.2
+go 1.25.0
 
 require (
 	github.com/go-logr/logr v1.4.3
@@ -112,7 +110,7 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/term v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
-	golang.org/x/time v0.12.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.36.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
