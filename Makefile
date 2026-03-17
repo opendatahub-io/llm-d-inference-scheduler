@@ -180,6 +180,13 @@ test-e2e: image-build image-build-uds-tokenizer image-pull ## Run end-to-end tes
 	@printf "\033[33;1m==== Running End to End Tests ====\033[0m\n"
 	PATH=$(LOCALBIN):$$PATH ./test/scripts/run_e2e.sh
 
+.PHONY: bench-tokenizer
+bench-tokenizer: ## Run external tokenizer + scorer benchmark (requires kind cluster with EPP deployed)
+	@printf "\033[33;1m==== Running External Tokenizer Benchmark ====\033[0m\n"
+	@printf "Ensure the kind cluster is running with the external tokenizer config.\n"
+	@printf "Run 'EXTERNAL_TOKENIZER_ENABLED=true KV_CACHE_ENABLED=true make env-dev-kind' first.\n\n"
+	go test -bench=. -benchmem -count=5 -timeout=5m ./test/profiling/tokenizerbench/
+
 .PHONY: post-deploy-test
 post-deploy-test: ## Run post deployment tests
 	echo Success!
@@ -199,7 +206,7 @@ build-%: check-go ## Build the project
 ##@ Container image Build/Push/Pull
 
 .PHONY:	image-build
-image-build: image-build-epp image-build-sidecar ## Build Container image using $(CONTAINER_RUNTIME)
+image-build: image-build-epp image-build-sidecar image-build-uds-tokenizer ## Build Container image using $(CONTAINER_RUNTIME)
 
 # Path to kv-cache repo for UDS tokenizer image build (can be overridden)
 KV_CACHE_PATH ?= $(shell go list -m -f '{{.Dir}}' github.com/llm-d/llm-d-kv-cache 2>/dev/null)
