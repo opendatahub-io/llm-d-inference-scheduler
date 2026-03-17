@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,7 +16,7 @@ import (
 // dataParallelHandler checks if Data Parallel handling is needed.
 // Returns true if Data Parallel processing was needed
 func (s *Server) dataParallelHandler(w http.ResponseWriter, r *http.Request) bool {
-	dataParallelPodHostPort := r.Header.Get(common.DataParallelPodHeader)
+	dataParallelPodHostPort := r.Header.Get(common.DataParallelEndpointHeader)
 	if dataParallelPodHostPort != "" {
 		handler := s.dataParallelProxies[dataParallelPodHostPort]
 		if handler != nil {
@@ -35,7 +34,7 @@ func (s *Server) dataParallelHandler(w http.ResponseWriter, r *http.Request) boo
 	return false
 }
 
-func (s *Server) startDataParallel(ctx context.Context, cert *tls.Certificate, grp *errgroup.Group) error {
+func (s *Server) startDataParallel(ctx context.Context, grp *errgroup.Group) error {
 	podIP := os.Getenv("POD_IP")
 	basePort, err := strconv.Atoi(s.port)
 	if err != nil {
@@ -77,9 +76,9 @@ func (s *Server) startDataParallel(ctx context.Context, cert *tls.Certificate, g
 			clone.forwardDataParallel = false
 			// Configure handlers
 			clone.handler = clone.createRoutes()
-			clone.setConnector()
+			clone.setKVConnector()
 
-			return clone.startHTTP(ctx, cert)
+			return clone.startHTTP(ctx)
 		})
 	}
 	return nil
