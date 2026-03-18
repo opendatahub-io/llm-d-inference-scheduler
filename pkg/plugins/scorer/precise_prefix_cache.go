@@ -11,18 +11,30 @@ import (
 	"github.com/llm-d/llm-d-kv-cache/pkg/kvcache"
 	"github.com/llm-d/llm-d-kv-cache/pkg/kvcache/kvblock"
 	"github.com/llm-d/llm-d-kv-cache/pkg/kvevents"
+	"github.com/llm-d/llm-d-kv-cache/pkg/kvevents/engineadapter"
 	"github.com/llm-d/llm-d-kv-cache/pkg/tokenization/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	logutil "sigs.k8s.io/gateway-api-inference-extension/pkg/common/util/logging"
+	logutil "sigs.k8s.io/gateway-api-inference-extension/pkg/common/observability/logging"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/plugin"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/scheduling"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/scheduling/scorer/prefix"
+
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/telemetry"
 )
 
 const (
 	// PrecisePrefixCachePluginType is the type-name of the PrecisePrefixCacheScorer plugin.
 	PrecisePrefixCachePluginType = "precise-prefix-cache-scorer"
 )
+
+type kvCacheIndexer interface {
+	GetPodScores(ctx context.Context, renderReq *types.RenderChatRequest, prompt, modelName string, podIdentifiers []string) (map[string]float64, error)
+	ScoreTokens(ctx context.Context, tokens []uint32, modelName string, podIdentifiers []string) (map[string]float64, error)
+	KVBlockIndex() kvblock.Index
+}
 
 // PrecisePrefixCachePluginConfig holds the configuration for the
 // PrecisePrefixCacheScorer plugin.
@@ -45,7 +57,8 @@ var _ scheduling.Scorer = &PrecisePrefixCacheScorer{}
 // PrecisePrefixCachePluginFactory defines the factory function for creating
 // a new instance of the PrefixCacheTrackingPlugin.
 func PrecisePrefixCachePluginFactory(name string, rawParameters json.RawMessage,
-	handle plugin.Handle) (plugin.Plugin, error) {
+	handle plugin.Handle,
+) (plugin.Plugin, error) {
 	indexerConfig, err := kvcache.NewDefaultConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize indexer config: %w", err)
@@ -89,7 +102,10 @@ func New(ctx context.Context, config PrecisePrefixCachePluginConfig) (*PrecisePr
 		config.TokenProcessorConfig = kvblock.DefaultTokenProcessorConfig()
 	}
 
-	tokenProcessor := kvblock.NewChunkedTokenDatabase(config.TokenProcessorConfig)
+	tokenProcessor, err := kvblock.NewChunkedTokenDatabase(config.TokenProcessorConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create token processor: %w", err)
+	}
 
 	// initialize the indexer
 	kvCacheIndexer, err := kvcache.NewKVCacheIndexer(ctx, config.IndexerConfig, tokenProcessor)
@@ -100,7 +116,7 @@ func New(ctx context.Context, config PrecisePrefixCachePluginConfig) (*PrecisePr
 	go kvCacheIndexer.Run(ctx)
 
 	// initialize the KV-events pool
-	pool := kvevents.NewPool(config.KVEventsConfig, kvCacheIndexer.KVBlockIndex(), tokenProcessor)
+	pool := kvevents.NewPool(config.KVEventsConfig, kvCacheIndexer.KVBlockIndex(), tokenProcessor, engineadapter.NewVLLMAdapter())
 	pool.Start(ctx)
 
 	subscribersManager := kvevents.NewSubscriberManager(pool)
@@ -146,7 +162,7 @@ func New(ctx context.Context, config PrecisePrefixCachePluginConfig) (*PrecisePr
 // to keep the internal KV-cache index state up-to-date.
 type PrecisePrefixCacheScorer struct {
 	typedName      plugin.TypedName
-	kvCacheIndexer *kvcache.Indexer
+	kvCacheIndexer kvCacheIndexer
 
 	// until the IGW data-layer is ready to provide endpoint events,
 	// we maintain a TTL cache of known endpoints that are discovered through
@@ -177,9 +193,22 @@ func (s *PrecisePrefixCacheScorer) Category() scheduling.ScorerCategory {
 // Score scores the provided endpoint based on the KVCache index state.
 // The returned scores are normalized to a range of 0-1.
 func (s *PrecisePrefixCacheScorer) Score(ctx context.Context, cycleState *scheduling.CycleState, request *scheduling.LLMRequest, endpoints []scheduling.Endpoint) map[scheduling.Endpoint]float64 {
+	// Start tracing span for scoring operation
+	tracer := telemetry.Tracer()
+	ctx, span := tracer.Start(ctx, "llm_d.epp.scorer.prefix_cache",
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
+
 	logger := log.FromContext(ctx).WithName(s.typedName.String())
 	debugLogger := logger.V(logutil.DEBUG)
 
+	// Set initial attributes
+	span.SetAttributes(
+		attribute.Int("llm_d.scorer.candidate_endpoints", len(endpoints)),
+	)
+
+	// Handle pod discovery and subscriber management
 	if s.kvEventsConfig.DiscoverPods {
 		// update subscribers here temporarily
 		for _, endpoint := range endpoints {
@@ -200,17 +229,33 @@ func (s *PrecisePrefixCacheScorer) Score(ctx context.Context, cycleState *schedu
 		}
 	}
 
+	// Early return if request is nil
 	if request == nil {
 		debugLogger.Info("Request is nil, skipping scoring")
+		span.SetAttributes(attribute.String("llm_d.scorer.result", "skipped_nil_request"))
 		return nil
+	}
+
+	// Set optional request attributes
+	if request.TargetModel != "" {
+		span.SetAttributes(attribute.String("gen_ai.request.model", request.TargetModel))
+	}
+	if request.RequestId != "" {
+		span.SetAttributes(attribute.String("gen_ai.request.id", request.RequestId))
 	}
 
 	scores, err := s.getScores(ctx, request)
 	if err != nil {
 		logger.Error(err, "Failed to get endpoint scores")
+		span.SetStatus(codes.Error, err.Error())
 		return nil
 	}
 	debugLogger.Info("Got endpoint scores", "scores", scores)
+
+	// Track scoring statistics
+	span.SetAttributes(
+		attribute.Int("llm_d.scorer.scores_computed", len(scores)),
+	)
 
 	endpointToKey := func(endpoint scheduling.Endpoint) (string, bool) {
 		metadata := endpoint.GetMetadata()
@@ -221,6 +266,7 @@ func (s *PrecisePrefixCacheScorer) Score(ctx context.Context, cycleState *schedu
 		return metadata.Address, true
 	}
 
+	// Write prefix cache state to cycle state
 	state := &prefix.SchedulingContextState{
 		PrefixHashes:       []prefix.BlockHash{},
 		PrefixCacheServers: map[prefix.ServerID]int{},
@@ -234,13 +280,36 @@ func (s *PrecisePrefixCacheScorer) Score(ctx context.Context, cycleState *schedu
 	}
 	cycleState.Write(plugin.StateKey(s.typedName.String()), state)
 
-	return indexedScoresToNormalizedScoredPods(endpoints, endpointToKey, scores)
+	normalizedScores := indexedScoresToNormalizedScoredPods(endpoints, endpointToKey, scores)
+
+	// Calculate score distribution for observability
+	if len(normalizedScores) > 0 {
+		maxScore := 0.0
+		totalScore := 0.0
+		for _, score := range normalizedScores {
+			if score > maxScore {
+				maxScore = score
+			}
+			totalScore += score
+		}
+		avgScore := totalScore / float64(len(normalizedScores))
+
+		span.SetAttributes(
+			attribute.Float64("llm_d.scorer.score.max", maxScore),
+			attribute.Float64("llm_d.scorer.score.avg", avgScore),
+			attribute.Int("llm_d.scorer.endpoints_scored", len(normalizedScores)),
+		)
+	}
+
+	return normalizedScores
 }
 
 // getScores retrieves the endpoint scores from the KV-cache indexer
 // based on the provided LLM request.
-// If the request contains chat completions, it processes them accordingly.
-// If the request contains regular completions, it uses the prompt directly.
+// If the request already has TokenizedPrompt set (e.g. by an external tokenizer
+// PrepareData plugin), it calls ScoreTokens directly, bypassing
+// prompt/chat tokenization.
+// Otherwise, chat completions and regular completions are tokenized internally.
 func (s *PrecisePrefixCacheScorer) getScores(ctx context.Context, request *scheduling.LLMRequest) (map[string]float64, error) {
 	logger := log.FromContext(ctx).WithName(s.typedName.String())
 	traceLogger := logger.V(logutil.TRACE)
@@ -248,6 +317,16 @@ func (s *PrecisePrefixCacheScorer) getScores(ctx context.Context, request *sched
 	traceLogger.Info("Getting scores",
 		"isChatCompletions", request.Body != nil && request.Body.ChatCompletions != nil,
 		"isCompletions", request.Body != nil && request.Body.Completions != nil)
+
+	if request.TokenizedPrompt != nil && len(request.TokenizedPrompt.TokenIDs) > 0 {
+		traceLogger.Info("tokens already in the request, skipping tokenization")
+
+		scores, err := s.kvCacheIndexer.ScoreTokens(ctx, request.TokenizedPrompt.TokenIDs, request.TargetModel, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get endpoint scores for tokens: %w", err)
+		}
+		return scores, nil
+	}
 
 	// The upstream parser guarantees exactly one body is populated, but we defensively prioritize chat completions.
 	// If an unexpected dual payload slips through (parser regression/new client), log it and use chat semantics.
