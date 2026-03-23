@@ -14,10 +14,11 @@ USER root
 
 WORKDIR /workspace
 
+# Copy Red Hat repository configuration for zeromq packages
+COPY rhelai.repo /etc/yum.repos.d/rhelai.repo
+
 # Install ZMQ development libraries (required for CGO)
-# The builder is based on UBI8, so we need epel-release-9
-RUN dnf install -y 'https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm' && \
-    dnf install -y zeromq-devel pkgconfig && \
+RUN dnf install -y zeromq-devel pkgconfig && \
     dnf clean all
 
 # Copy the Go Modules manifests
@@ -41,11 +42,11 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7
 
 WORKDIR /
 
+# Copy Red Hat repository configuration for zeromq packages
+COPY rhelai.repo /etc/yum.repos.d/rhelai.repo
+
 # Install ZMQ runtime library only (no Python needed)
-RUN curl -L -o /tmp/epel-release.rpm https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
-    rpm -i /tmp/epel-release.rpm && \
-    rm /tmp/epel-release.rpm && \
-    microdnf install -y --setopt=install_weak_deps=0 zeromq && \
+RUN microdnf install -y --setopt=install_weak_deps=0 zeromq && \
     microdnf clean all && \
     rm -rf /var/cache/yum /var/lib/yum
 

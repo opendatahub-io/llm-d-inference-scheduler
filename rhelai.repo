@@ -1,0 +1,17 @@
+# list of approved dnf repos: https://github.com/release-engineering/rhtap-ec-policy/blob/main/data/known_rpm_repositories.yml
+
+[rhelai-3.0-for-rhel-9-$basearch-rpms]
+name = Red Hat Enterprise Linux AI (3.0) for RHEL 9 $basearch (RPMs)
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/layered/rhel9/$basearch/rhelai/3.0/os
+enabled = 1
+gpgcheck = 1
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+repo_gpgcheck = 0
+
+[rhelai-3.0-for-rhel-9-$basearch-source-rpms]
+name = Red Hat Enterprise Linux AI (3.0) for RHEL 9 $basearch (Source RPMs)
+baseurl = https://rhsm-pulp.corp.redhat.com/content/dist/layered/rhel9/$basearch/rhelai/3.0/source/SRPMS/
+enabled = 1
+gpgcheck = 1
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+repo_gpgcheck = 0
