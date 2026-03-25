@@ -60,7 +60,7 @@ var (
 	k8sClient     client.Client
 	testEnv       *envtest.Environment
 	testScheme    = runtime.NewScheme()
-	logger        = zap.New(zap.UseDevMode(true), zap.Level(-1*zapcore.Level(logutil.DEFAULT)))
+	logger        = zap.New(zap.UseDevMode(true), zap.Level(zapcore.Level(logutil.DEFAULT)))
 	baseResources []*unstructured.Unstructured
 )
 

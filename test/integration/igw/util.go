@@ -24,6 +24,7 @@ package integration
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,7 +41,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
+	pb "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requesthandling/parsers/vllmgrpc/api/gen"
 
 	reqcommon "sigs.k8s.io/gateway-api-inference-extension/pkg/common/request"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/metadata"
@@ -62,6 +65,10 @@ const (
 // Use this for the majority of "Happy Path" EPP and BBR streaming tests.
 func ReqLLM(logger logr.Logger, prompt, model, targetModel string) []*extProcPb.ProcessingRequest {
 	return GenerateStreamedRequestSet(logger, prompt, model, targetModel, nil)
+}
+
+func ReqGRPCLLM(logger logr.Logger, prompt, inferenceObjective string) []*extProcPb.ProcessingRequest {
+	return GenerateStreamedGRPCRequestSet(logger, prompt, inferenceObjective, nil)
 }
 
 // ReqLLMUnary creates a single `ProcessingRequest` containing a complete JSON body.
@@ -148,14 +155,49 @@ func GenerateRequest(logger logr.Logger, prompt, model string, filterMetadata []
 		panic(fmt.Errorf("failed to marshal LLM request: %w", err))
 	}
 
+	return generateRequestFromBytes(llmReq, filterMetadata)
+}
+
+func GenerateGRPCRequest(logger logr.Logger, prompt string, filterMetadata []string) *extProcPb.ProcessingRequest {
+	req := &pb.GenerateRequest{
+		Input: &pb.GenerateRequest_Text{
+			Text: prompt,
+		},
+	}
+
+	// Panic on marshal failure is acceptable in test helpers as it implies a bug in the test code itself.
+	payload, err := CreateGrpcPayload(req)
+	if err != nil {
+		panic(fmt.Errorf("failed to marshal LLM request: %w", err))
+	}
+
+	return generateRequestFromBytes(payload, filterMetadata)
+}
+
+func generateRequestFromBytes(payload []byte, filterMetadata []string) *extProcPb.ProcessingRequest {
 	return &extProcPb.ProcessingRequest{
 		Request: &extProcPb.ProcessingRequest_RequestBody{
-			RequestBody: &extProcPb.HttpBody{Body: llmReq, EndOfStream: true},
+			RequestBody: &extProcPb.HttpBody{Body: payload, EndOfStream: true},
 		},
 		MetadataContext: &envoyCorev3.Metadata{
 			FilterMetadata: GenerateRequestMetadata(filterMetadata),
 		},
 	}
+}
+
+// helper function to simulate the gRPC payload framing
+// [1 byte compression flag] [4 bytes message length] [message bytes...]
+func CreateGrpcPayload(msg proto.Message) ([]byte, error) {
+	b, err := proto.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	payload := make([]byte, 5+len(b))
+	payload[0] = 0 // 0 = uncompressed
+	binary.BigEndian.PutUint32(payload[1:5], uint32(len(b)))
+	copy(payload[5:], b)
+	return payload, nil
 }
 
 // GenerateStreamedRequestSet creates a slice of requests simulating an Envoy stream:
@@ -169,18 +211,45 @@ func GenerateStreamedRequestSet(
 	requests := make([]*extProcPb.ProcessingRequest, 0, 2)
 
 	// Headers
+	requests = append(requests, gnereateHeaders(model, targetModel, filterMetadata))
+
+	// Body
+	requests = append(requests, GenerateRequest(logger, prompt, model, filterMetadata))
+	return requests
+}
+
+// GenerateStreamedRequestSet creates a slice of requests simulating an Envoy stream:
+// 1. A Headers frame with standard Inference Extension headers.
+// 2. A Body frame with the gRPC payload.
+func GenerateStreamedGRPCRequestSet(
+	logger logr.Logger,
+	prompt string,
+	inferenceObjective string, // Set to non-empty to set x-gateway-inference-objective value
+	filterMetadata []string,
+) []*extProcPb.ProcessingRequest {
+	requests := make([]*extProcPb.ProcessingRequest, 0, 2)
+
+	// Headers
+	requests = append(requests, gnereateHeaders(inferenceObjective, "", filterMetadata)) // GRPC payload does not need model and dose not support TargetModel.
+
+	// Body
+	requests = append(requests, GenerateGRPCRequest(logger, prompt, filterMetadata))
+	return requests
+}
+
+func gnereateHeaders(inferenceObjective, targetModel string, filterMetadata []string) *extProcPb.ProcessingRequest {
 	headers := []*envoyCorev3.HeaderValue{
 		{Key: "hi", Value: "mom"},
 		{Key: reqcommon.RequestIdHeaderKey, Value: "test-request-id"},
 	}
-	if model != "" {
-		headers = append(headers, &envoyCorev3.HeaderValue{Key: metadata.ObjectiveKey, Value: model})
+	if inferenceObjective != "" {
+		headers = append(headers, &envoyCorev3.HeaderValue{Key: metadata.ObjectiveKey, Value: inferenceObjective})
 	}
 	if targetModel != "" {
 		headers = append(headers, &envoyCorev3.HeaderValue{Key: metadata.ModelNameRewriteKey, Value: targetModel})
 	}
 
-	headerReq := &extProcPb.ProcessingRequest{
+	return &extProcPb.ProcessingRequest{
 		Request: &extProcPb.ProcessingRequest_RequestHeaders{
 			RequestHeaders: &extProcPb.HttpHeaders{
 				Headers: &envoyCorev3.HeaderMap{Headers: headers},
@@ -190,11 +259,6 @@ func GenerateStreamedRequestSet(
 			FilterMetadata: GenerateRequestMetadata(filterMetadata),
 		},
 	}
-	requests = append(requests, headerReq)
-
-	// Body
-	requests = append(requests, GenerateRequest(logger, prompt, model, filterMetadata))
-	return requests
 }
 
 // GenerateRequestMetadata constructs the Envoy Dynamic Metadata structure.
@@ -224,7 +288,7 @@ func GenerateRequestMetadata(filterMetadata []string) map[string]*structpb.Struc
 // It returns two messages: one for the Header response and one for the Body response.
 func NewRequestBufferedResponse(
 	destinationEndpoint string,
-	rewrittenBody string,
+	rewrittenBody []byte,
 	otherHeaders ...*envoyCorev3.HeaderValueOption,
 ) []*extProcPb.ProcessingResponse {
 	setHeaders := make([]*envoyCorev3.HeaderValueOption, 0, 2+len(otherHeaders))
@@ -264,7 +328,7 @@ func NewRequestBufferedResponse(
 					BodyMutation: &extProcPb.BodyMutation{
 						Mutation: &extProcPb.BodyMutation_StreamedResponse{
 							StreamedResponse: &extProcPb.StreamedBodyResponse{
-								Body:        []byte(rewrittenBody),
+								Body:        rewrittenBody,
 								EndOfStream: true,
 							},
 						},
@@ -282,11 +346,12 @@ func NewRequestBufferedResponse(
 // It returns a Header mutation message followed by a Body replacement message.
 func NewResponseBufferedResponse(
 	rewrittenBody string,
+	eos bool,
 	headersToSet ...*envoyCorev3.HeaderValueOption,
 ) []*extProcPb.ProcessingResponse {
 	return []*extProcPb.ProcessingResponse{
 		NewResponseHeaders(headersToSet...),
-		NewResponseStreamChunk(rewrittenBody, true),
+		NewResponseStreamChunk(rewrittenBody, eos),
 	}
 }
 
