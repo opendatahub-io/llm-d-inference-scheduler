@@ -151,6 +151,39 @@ func ExpectGRPCRouteTo(endpoint, prompt string) []*extProcPb.ProcessingResponse 
 	)
 }
 
+func ExpectRouteToWithStream(endpoint, targetModel, prompt string) []*extProcPb.ProcessingResponse {
+	bodyMap := map[string]any{
+		"max_tokens": 100, "model": targetModel, "prompt": prompt, "temperature": 0, "stream": true,
+	}
+	j, _ := json.Marshal(bodyMap)
+	return integration.NewRequestBufferedResponse(
+		endpoint, j,
+		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{Key: "hi", RawValue: []byte("mom")}},
+		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{
+			Key:      reqcommon.RequestIdHeaderKey,
+			RawValue: []byte("test-request-id"),
+		}},
+	)
+}
+
+func ExpectGRPCRouteToWithStream(endpoint, prompt string) []*extProcPb.ProcessingResponse {
+	req := &pb.GenerateRequest{
+		Input: &pb.GenerateRequest_Text{
+			Text: prompt,
+		},
+		Stream: true,
+	}
+	j, _ := integration.CreateGrpcPayload(req)
+	return integration.NewRequestBufferedResponse(
+		endpoint, j,
+		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{Key: "hi", RawValue: []byte("mom")}},
+		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{
+			Key:      reqcommon.RequestIdHeaderKey,
+			RawValue: []byte("test-request-id"),
+		}},
+	)
+}
+
 // ExpectReject asserts that the EPP immediately rejected the request with the given code and message.
 func ExpectReject(code envoyTypePb.StatusCode, msg string) []*extProcPb.ProcessingResponse {
 	return integration.NewImmediateErrorResponse(code, msg)
@@ -194,6 +227,26 @@ func ExpectStreamResp(chunks ...string) []*extProcPb.ProcessingResponse {
 	// 2. The Body Chunk Frames
 	for i, chunk := range chunks {
 		res = append(res, integration.NewResponseStreamChunk(chunk, i == len(chunks)-1))
+	}
+	return res
+}
+
+// ExpectGRPCStreamResp asserts that the EPP streams the gRPC response chunks.
+func ExpectGRPCStreamResp(chunks ...string) []*extProcPb.ProcessingResponse {
+	res := make([]*extProcPb.ProcessingResponse, 0, 1+len(chunks))
+	res = append(res, integration.NewResponseHeaders(
+		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{
+			Key:      "x-went-into-resp-headers",
+			RawValue: []byte("true"),
+		}},
+		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{
+			Key:      "content-type",
+			RawValue: []byte("application/grpc"),
+		}},
+	))
+
+	for _, chunk := range chunks {
+		res = append(res, integration.NewResponseStreamChunk(chunk, false))
 	}
 	return res
 }

@@ -82,6 +82,20 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 			},
 		},
 		{
+			name:     "select lower queue with streaming request",
+			requests: integration.ReqGRPCLLMWithStream(logger, "test-stream", inferenceObjectiveWithPriority4),
+			pods: []podState{
+				P(0, 3, 0.2),
+				P(1, 0, 0.1), // Winner
+				P(2, 10, 0.2),
+			},
+			wantResponses: ExpectGRPCRouteToWithStream("192.168.1.2:8000", "test-stream"),
+			wantMetrics: map[string]string{
+				"inference_objective_request_total": cleanMetric(metricReqTotal("", "", 4)),
+				"inference_pool_ready_pods":         cleanMetric(metricReadyPods(3)),
+			},
+		},
+		{
 			name:     "do not shed requests by default",
 			requests: integration.ReqGRPCLLM(logger, "test2", ""),
 			pods: []podState{
@@ -277,6 +291,149 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="+Inf"} 1
 					inference_objective_input_tokens_sum{model_name="",target_model_name=""} 7
 					inference_objective_input_tokens_count{model_name="",target_model_name=""} 1
+					`),
+			},
+		},
+		{
+			name: "response streaming with token usage",
+			requests: func() []*extProcPb.ProcessingRequest {
+				reqs := integration.ReqGRPCLLMWithStream(logger, "test-stream", inferenceObjectiveWithPriority4)
+
+				resp1 := &pb.GenerateResponse{
+					Response: &pb.GenerateResponse_Chunk{
+						Chunk: &pb.GenerateStreamChunk{
+							TokenIds: []uint32{1, 2, 3},
+						},
+					},
+				}
+				resp2 := &pb.GenerateResponse{
+					Response: &pb.GenerateResponse_Complete{
+						Complete: &pb.GenerateComplete{
+							PromptTokens:     7,
+							CompletionTokens: 10,
+						},
+					},
+				}
+
+				gRPCPayload1, _ := integration.CreateGrpcPayload(resp1)
+				gRPCPayload2, _ := integration.CreateGrpcPayload(resp2)
+
+				respHeaders := &extProcPb.ProcessingRequest{
+					Request: &extProcPb.ProcessingRequest_ResponseHeaders{
+						ResponseHeaders: &extProcPb.HttpHeaders{
+							Headers: &configPb.HeaderMap{Headers: []*configPb.HeaderValue{
+								{Key: "content-type", Value: "application/grpc"},
+							}},
+						},
+					},
+				}
+				respBody1 := &extProcPb.ProcessingRequest{
+					Request: &extProcPb.ProcessingRequest_ResponseBody{
+						ResponseBody: &extProcPb.HttpBody{
+							Body: gRPCPayload1,
+						},
+					},
+				}
+				respBody2 := &extProcPb.ProcessingRequest{
+					Request: &extProcPb.ProcessingRequest_ResponseBody{
+						ResponseBody: &extProcPb.HttpBody{
+							Body: gRPCPayload2,
+						},
+					},
+				}
+				respTrailers := &extProcPb.ProcessingRequest{
+					Request: &extProcPb.ProcessingRequest_ResponseTrailers{
+						ResponseTrailers: &extProcPb.HttpTrailers{},
+					},
+				}
+
+				return append(reqs, respHeaders, respBody1, respBody2, respTrailers)
+			}(),
+			pods: []podState{P(0, 4, 0.2)},
+			wantResponses: func() []*extProcPb.ProcessingResponse {
+				reqs := ExpectGRPCRouteToWithStream("192.168.1.1:8000", "test-stream")
+
+				resp1 := &pb.GenerateResponse{
+					Response: &pb.GenerateResponse_Chunk{
+						Chunk: &pb.GenerateStreamChunk{
+							TokenIds: []uint32{1, 2, 3},
+						},
+					},
+				}
+				resp2 := &pb.GenerateResponse{
+					Response: &pb.GenerateResponse_Complete{
+						Complete: &pb.GenerateComplete{
+							PromptTokens:     7,
+							CompletionTokens: 10,
+						},
+					},
+				}
+				gRPCPayload1, _ := integration.CreateGrpcPayload(resp1)
+				gRPCPayload2, _ := integration.CreateGrpcPayload(resp2)
+
+				// Expect Headers response
+				respRespHeaders := integration.NewResponseHeaders(
+					&configPb.HeaderValueOption{Header: &configPb.HeaderValue{
+						Key:      "x-went-into-resp-headers",
+						RawValue: []byte("true"),
+					}},
+					&configPb.HeaderValueOption{Header: &configPb.HeaderValue{
+						Key:      "content-type",
+						RawValue: []byte("application/grpc"),
+					}},
+				)
+
+				// Expect Streaming body frame responses
+				respChunk1 := integration.NewResponseStreamChunk(string(gRPCPayload1), false)
+				respChunk2 := integration.NewResponseStreamChunk(string(gRPCPayload2), false)
+
+				return append(reqs, respRespHeaders, respChunk1, respChunk2)
+			}(),
+			wantMetrics: map[string]string{
+				"inference_objective_input_tokens": cleanMetric(`
+					# HELP inference_objective_input_tokens [ALPHA] Inference objective input token count distribution for requests in each model.
+					# TYPE inference_objective_input_tokens histogram
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="1"} 0
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="8"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="16"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="32"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="64"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="128"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="256"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="512"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="1024"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="2048"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="4096"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="8192"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="16384"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="32778"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="65536"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="131072"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="262144"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="524288"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="1.048576e+06"} 1
+					inference_objective_input_tokens_bucket{model_name="",target_model_name="",le="+Inf"} 1
+					inference_objective_input_tokens_sum{model_name="",target_model_name=""} 7
+					inference_objective_input_tokens_count{model_name="",target_model_name=""} 1
+					`),
+				"inference_objective_output_tokens": cleanMetric(`
+					# HELP inference_objective_output_tokens [ALPHA] Inference objective output token count distribution for requests in each model.
+					# TYPE inference_objective_output_tokens histogram
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="1"} 0
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="8"} 0
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="16"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="32"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="64"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="128"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="256"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="512"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="1024"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="2048"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="4096"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="8192"} 1
+					inference_objective_output_tokens_bucket{model_name="",target_model_name="",le="+Inf"} 1
+					inference_objective_output_tokens_sum{model_name="",target_model_name=""} 10
+					inference_objective_output_tokens_count{model_name="",target_model_name=""} 1
 					`),
 			},
 		},

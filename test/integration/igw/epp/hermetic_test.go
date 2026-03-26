@@ -152,6 +152,16 @@ func TestFullDuplexStreamed_KubeInferenceObjectiveRequest(t *testing.T) {
 					},
 				},
 				{
+					name:     "select lower queue with streaming request",
+					requests: integration.ReqLLMWithStream(logger, "test-stream", modelMyModel, modelMyModelTarget),
+					pods: []podState{
+						P(0, 3, 0.2),
+						P(1, 0, 0.1), // Winner
+						P(2, 10, 0.2),
+					},
+					wantResponses: ExpectRouteToWithStream("192.168.1.2:8000", modelMyModelTarget, "test-stream"),
+				},
+				{
 					name:     "select active lora, low queue",
 					requests: integration.ReqLLM(logger, "test2", modelSQLLora, modelSQLLoraTarget),
 					pods: []podState{

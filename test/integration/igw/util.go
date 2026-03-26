@@ -67,6 +67,13 @@ func ReqLLM(logger logr.Logger, prompt, model, targetModel string) []*extProcPb.
 	return GenerateStreamedRequestSet(logger, prompt, model, targetModel, nil)
 }
 
+func ReqLLMWithStream(logger logr.Logger, prompt, model, targetModel string) []*extProcPb.ProcessingRequest {
+	requests := make([]*extProcPb.ProcessingRequest, 0, 2)
+	requests = append(requests, gnereateHeaders(model, targetModel, nil))
+	requests = append(requests, GenerateRequestWithStream(logger, prompt, model, nil))
+	return requests
+}
+
 func ReqGRPCLLM(logger logr.Logger, prompt, inferenceObjective string) []*extProcPb.ProcessingRequest {
 	return GenerateStreamedGRPCRequestSet(logger, prompt, inferenceObjective, nil)
 }
@@ -156,6 +163,38 @@ func GenerateRequest(logger logr.Logger, prompt, model string, filterMetadata []
 	}
 
 	return generateRequestFromBytes(llmReq, filterMetadata)
+}
+
+func GenerateRequestWithStream(logger logr.Logger, prompt, model string, filterMetadata []string) *extProcPb.ProcessingRequest {
+	j := map[string]any{
+		"prompt":      prompt,
+		"max_tokens":  100,
+		"temperature": 0,
+		"stream":      true,
+	}
+	if model != "" {
+		j["model"] = model
+	}
+	llmReq, _ := json.Marshal(j)
+	return generateRequestFromBytes(llmReq, filterMetadata)
+}
+
+func GenerateGRPCRequestWithStream(logger logr.Logger, prompt string, filterMetadata []string) *extProcPb.ProcessingRequest {
+	req := &pb.GenerateRequest{
+		Input: &pb.GenerateRequest_Text{
+			Text: prompt,
+		},
+		Stream: true,
+	}
+	payload, _ := CreateGrpcPayload(req)
+	return generateRequestFromBytes(payload, filterMetadata)
+}
+
+func ReqGRPCLLMWithStream(logger logr.Logger, prompt, inferenceObjective string) []*extProcPb.ProcessingRequest {
+	requests := make([]*extProcPb.ProcessingRequest, 0, 2)
+	requests = append(requests, gnereateHeaders(inferenceObjective, "", nil))
+	requests = append(requests, GenerateGRPCRequestWithStream(logger, prompt, nil))
+	return requests
 }
 
 func GenerateGRPCRequest(logger logr.Logger, prompt string, filterMetadata []string) *extProcPb.ProcessingRequest {
