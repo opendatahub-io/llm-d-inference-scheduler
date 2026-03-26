@@ -77,18 +77,23 @@ func (p *PrefillHeaderHandler) PreRequest(ctx context.Context, request *scheduli
 	)
 	defer span.End()
 
-	if request != nil && request.TargetModel != "" {
-		span.SetAttributes(attribute.String("gen_ai.request.model", request.TargetModel))
-	}
-	if request != nil && request.RequestId != "" {
-		span.SetAttributes(attribute.String("gen_ai.request.id", request.RequestId))
-	}
-	if _, found := request.Headers[common.PrefillPodHeader]; found {
-		request.Headers[common.PrefillPodHeader] = "" // clear header, if already set
+	if request == nil {
+		span.SetAttributes(
+			attribute.Bool("llm_d.epp.pd.disaggregation_used", false),
+			attribute.String("llm_d.epp.pd.reason", "request_is_nil"),
+		)
+		return
 	}
 
-	prefillProfileRunResult, exists := schedulingResult.ProfileResults[p.prefillProfile]
-	if !exists {
+	if request.TargetModel != "" {
+		span.SetAttributes(attribute.String("gen_ai.request.model", request.TargetModel))
+	}
+	span.SetAttributes(attribute.String("gen_ai.request.id", request.RequestId))
+
+	delete(request.Headers, common.PrefillEndpointHeader) // clear header, if already set
+
+	prefillProfileRunResult, ok := schedulingResult.ProfileResults[p.prefillProfile]
+	if !ok || prefillProfileRunResult == nil {
 		span.SetAttributes(
 			attribute.Bool("llm_d.epp.pd.disaggregation_used", false),
 			attribute.String("llm_d.epp.pd.reason", "no_prefill_profile_result"),
@@ -98,7 +103,7 @@ func (p *PrefillHeaderHandler) PreRequest(ctx context.Context, request *scheduli
 
 	targetPod := prefillProfileRunResult.TargetEndpoints[0].GetMetadata()
 	prefillHostPort := net.JoinHostPort(targetPod.Address, targetPod.Port)
-	request.Headers[common.PrefillPodHeader] = prefillHostPort // in the form of <ip:port>
+	request.Headers[common.PrefillEndpointHeader] = prefillHostPort // in the form of <ip:port>
 
 	span.SetAttributes(
 		attribute.Bool("llm_d.epp.pd.disaggregation_used", true),
