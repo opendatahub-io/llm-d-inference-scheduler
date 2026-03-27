@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-qwen3-32b
+  name: vllm-grpc-qwen3-32b
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: vllm-qwen3-32b
+      app: vllm-grpc-qwen3-32b
   template:
     metadata:
       labels:
-        app: vllm-qwen3-32b
+        app: vllm-grpc-qwen3-32b
         inference.networking.k8s.io/engine-type: vllm
     spec:
       containers:
@@ -21,11 +21,7 @@ spec:
         - --model
         - Qwen/Qwen3-32B
         - --port
-        - "8000"
-        - --max-loras
-        - "2"
-        - --lora-modules
-        - '{"name": "food-review-1"}'
+        - "50051"
         env:
         - name: POD_NAME
           valueFrom:
@@ -36,8 +32,8 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         ports:
-        - containerPort: 8000
-          name: http
+        - containerPort: 50051
+          name: grpc
           protocol: TCP
         resources:
           requests:
