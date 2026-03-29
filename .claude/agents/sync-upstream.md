@@ -12,14 +12,14 @@ Ask the user: **"Sync to upstream/main HEAD or a specific commit SHA?"**
 ## Workflow
 
 1. **Pre-flight checks**: Verify `origin` remote points to the user's fork (not upstream or opendatahub)
-2. **Fetch remotes**: Add/update `upstream` and `opendatahub` remotes, fetch `upstream/main` and `opendatahub/main`
+2. **Fetch remotes**: Add/update `upstream` and `opendatahub` remotes, fetch `upstream/main` and `opendatahub/main_2`
 3. **Resolve target commit**: Use the user-provided SHA, or default to `upstream/main` HEAD. Verify it exists on `upstream/main`
 4. **Check for duplicates**: If a sync branch or PR for this SHA already exists, inform the user and stop
-5. **Create sync branch**: Create `sync/upstream-<short_sha>` based on `opendatahub/main`
+5. **Create sync branch**: Create `sync/upstream-<short_sha>` based on `opendatahub/main_2`
 6. **Merge upstream**: Merge the target upstream commit into the sync branch. Resolve conflicts if needed
 7. **Push branch**: Push to `origin`
 8. **Confirm PR creation**: Ask the user whether to open a PR or stop with the branch pushed only
-9. **Open PR** (if confirmed): Open a PR to `opendatahub-io/llm-d-inference-scheduler` targeting `main`
+9. **Open PR** (if confirmed): Open a PR to `opendatahub-io/llm-d-inference-scheduler` targeting `main_2`
 
 ## Commands
 
@@ -40,7 +40,7 @@ git remote set-url upstream https://github.com/llm-d/llm-d-inference-scheduler.g
 git remote add opendatahub https://github.com/opendatahub-io/llm-d-inference-scheduler.git 2>/dev/null || true
 git remote set-url opendatahub https://github.com/opendatahub-io/llm-d-inference-scheduler.git
 git fetch upstream main
-git fetch opendatahub main
+git fetch opendatahub main_2
 
 # 3. Resolve target commit
 TARGET_COMMIT="${USER_SHA:-upstream/main}"
@@ -55,8 +55,8 @@ if git show-ref --verify --quiet "refs/heads/${BRANCH}" || git show-ref --verify
   # Ask user whether to force-update or skip
 fi
 
-# 5. Create branch from opendatahub/main
-git checkout -b "${BRANCH}" opendatahub/main
+# 5. Create branch from opendatahub/main_2
+git checkout -b "${BRANCH}" opendatahub/main_2
 
 # 6. Merge upstream commit into the sync branch
 git merge --no-ff "${FULL_SHA}" --no-edit -m "Sync upstream llm-d/llm-d-inference-scheduler ${SHORT_SHA}"
@@ -93,10 +93,10 @@ FORK_OWNER=$(git remote get-url origin | sed -E 's|.*[:/]([^/]+)/[^/]+(.git)?$|\
 
 gh pr create \
   --repo opendatahub-io/llm-d-inference-scheduler \
-  --base main \
+  --base main_2 \
   --head "${FORK_OWNER}:${BRANCH}" \
   --title "[sync] upstream llm-d main branch ${SHORT_SHA} [$(date -u +%Y-%m-%d)]" \
-  --body "Syncs llm-d/llm-d-inference-scheduler main branch into ODH main branch.
+  --body "Syncs llm-d/llm-d-inference-scheduler main branch into ODH main_2 branch.
 
 Upstream commit: https://github.com/llm-d/llm-d-inference-scheduler/commit/${FULL_SHA}"
 ```
@@ -108,7 +108,7 @@ Regardless of whether the PR was created or skipped:
 git checkout "${ORIGINAL_BRANCH}"
 ```
 
-If `gh pr create` fails, inform the user that the branch has been pushed to `origin/${BRANCH}` and ask them to create the PR manually at `https://github.com/opendatahub-io/llm-d-inference-scheduler/compare/main...${FORK_OWNER}:${BRANCH}`.
+If `gh pr create` fails, inform the user that the branch has been pushed to `origin/${BRANCH}` and ask them to create the PR manually at `https://github.com/opendatahub-io/llm-d-inference-scheduler/compare/main_2...${FORK_OWNER}:${BRANCH}`.
 
 ## Error Handling
 
