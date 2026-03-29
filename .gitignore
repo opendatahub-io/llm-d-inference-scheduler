@@ -42,3 +42,6 @@ vendor
 
 # Coverage reports (HTML; .out files are already covered by *.out above)
 /coverage
+
+# Claude config
+.claude/settings.local.json
