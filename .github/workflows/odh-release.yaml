@@ -1,0 +1,104 @@
+name: ODH Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_branch:
+        description: 'Name of the release branch (e.g. release-v3.5.0, release-v3.4.0-ea1)'
+        required: true
+        type: string
+      source_ref:
+        description: 'Source commit SHA to create the release branch from. Leave empty to use the latest commit on main_2.'
+        required: false
+        type: string
+        default: ''
+      create_tag:
+        description: 'Create a tag from the release branch? Tag will be derived from branch name (e.g. release-v3.5.0 -> v3.5.0)'
+        required: true
+        type: boolean
+        default: false
+      create_release:
+        description: 'Create a GitHub release with auto-generated release notes? (requires create_tag)'
+        required: true
+        type: boolean
+        default: false
+
+env:
+  DEFAULT_BRANCH: main_2
+
+jobs:
+  create-release-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Validate branch name
+        run: |
+          BRANCH="${{ inputs.release_branch }}"
+          if [[ ! "$BRANCH" =~ ^release-v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "::error::Invalid branch name '${BRANCH}'. Must match pattern 'release-v<major>.<minor>.<patch>[-<prerelease>]' (e.g. release-v3.5.0, release-v3.4.0-ea1)"
+            exit 1
+          fi
+          echo "Branch name '${BRANCH}' is valid."
+
+      - name: Checkout ${{ env.DEFAULT_BRANCH }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.DEFAULT_BRANCH }}
+          fetch-depth: 0
+
+      - name: Create release branch
+        run: |
+          BRANCH="${{ inputs.release_branch }}"
+          SOURCE_REF="${{ inputs.source_ref }}"
+          if [[ -n "${SOURCE_REF}" ]]; then
+            echo "Creating release branch from SHA: ${SOURCE_REF}"
+            git checkout "${SOURCE_REF}"
+          else
+            echo "Creating release branch from latest ${{ env.DEFAULT_BRANCH }}"
+          fi
+          git checkout -b "${BRANCH}"
+          git push origin "${BRANCH}"
+          echo "::notice::Created release branch '${BRANCH}' from ${SOURCE_REF:-${{ env.DEFAULT_BRANCH }}}"
+
+  tag-release:
+    needs: create-release-branch
+    if: inputs.create_tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_branch }}
+          fetch-depth: 0
+
+      - name: Derive tag and push
+        id: derive-tag
+        run: |
+          BRANCH="${{ inputs.release_branch }}"
+          TAG="${BRANCH#release-}"
+          echo "Tagging release branch '${BRANCH}' as '${TAG}'"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          git tag "${TAG}"
+          git push origin "${TAG}"
+          echo "::notice::Created and pushed tag '${TAG}'"
+    outputs:
+      tag: ${{ steps.derive-tag.outputs.tag }}
+
+  create-release:
+    needs: tag-release
+    if: inputs.create_tag && inputs.create_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag-release.outputs.tag }}
+          name: ODH release ${{ needs.tag-release.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ contains(needs.tag-release.outputs.tag, '-') }}

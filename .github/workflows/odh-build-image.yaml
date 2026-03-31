@@ -1,0 +1,134 @@
+name: ODH Build and Push Image
+# Builds container images on every PR to validate the build.
+# On merge to main_2, builds and pushes images to Quay.io.
+# Builds both epp and sidecar images.
+
+on:
+  pull_request:
+    branches:
+      - main_2
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'deploy/**'
+      - 'hooks/**'
+      - 'scripts/**'
+      - 'test/**'
+      - 'LICENSE'
+      - 'OWNERS'
+      - 'OWNERS_ALIASES'
+      - '.typos.toml'
+      - '.golangci.yml'
+      - '.lychee.toml'
+      - '.prowlabels.yaml'
+      - '.gitignore'
+      - '.tekton/**'
+      - 'Makefile*'
+      - '.github/**'
+      - '!.github/workflows/odh-build-image.yaml'
+  push:
+    branches:
+      - main_2
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'deploy/**'
+      - 'hooks/**'
+      - 'scripts/**'
+      - 'test/**'
+      - 'LICENSE'
+      - 'OWNERS'
+      - 'OWNERS_ALIASES'
+      - '.typos.toml'
+      - '.golangci.yml'
+      - '.lychee.toml'
+      - '.prowlabels.yaml'
+      - '.gitignore'
+      - '.tekton/**'
+      - 'Makefile*'
+      - '.github/**'
+      - '!.github/workflows/odh-build-image.yaml'
+
+env:
+  REGISTRY: quay.io
+  REGISTRY_ORG: opendatahub-io
+
+jobs:
+  build-and-push-epp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            TAG="pr-${{ github.event.number }}"
+          else
+            TAG="latest"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Image will be tagged as: ${TAG}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Quay.io
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_ID }}
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Build and push epp image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.epp
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/llm-d-inference-scheduler-epp:${{ steps.tag.outputs.tag }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=epp
+          cache-to: type=gha,mode=max,scope=epp
+
+  build-and-push-sidecar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            TAG="pr-${{ github.event.number }}"
+          else
+            TAG="latest"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Image will be tagged as: ${TAG}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Quay.io
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_ID }}
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Build and push sidecar image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.sidecar
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/llm-d-inference-scheduler-sidecar:${{ steps.tag.outputs.tag }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=sidecar
+          cache-to: type=gha,mode=max,scope=sidecar
