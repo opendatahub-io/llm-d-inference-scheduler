@@ -63,6 +63,8 @@ import (
 	sourcenotifications "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/source/notifications"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/flowcontrol/fairness"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/flowcontrol/ordering"
+	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/flowcontrol/saturationdetector/concurrency"
+	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/flowcontrol/saturationdetector/utilization"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requestcontrol/requestattributereporter"
 	testresponsereceived "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requestcontrol/test/responsereceived"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requesthandling/parsers/openai"
@@ -80,8 +82,6 @@ import (
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/metrics"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/metrics/collectors"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/requestcontrol"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/saturationdetector/framework/plugins/concurrencydetector"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/saturationdetector/framework/plugins/utilizationdetector"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/scheduling"
 	runserver "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/server"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/util/env"
@@ -473,8 +473,8 @@ func (r *Runner) registerInTreePlugins() {
 	fwkplugin.Register(openai.OpenAIParserType, openai.OpenAIParserPluginFactory)
 	fwkplugin.Register(vllmgrpc.VllmGRPCParserType, vllmgrpc.VllmGRPCParserPluginFactory)
 	// register saturation detector plugins
-	fwkplugin.Register(concurrencydetector.ConcurrencyDetectorType, concurrencydetector.ConcurrencyDetectorFactory)
-	fwkplugin.Register(utilizationdetector.UtilizationDetectorType, utilizationdetector.UtilizationDetectorFactory)
+	fwkplugin.Register(concurrency.ConcurrencyDetectorType, concurrency.ConcurrencyDetectorFactory)
+	fwkplugin.Register(utilization.UtilizationDetectorType, utilization.UtilizationDetectorFactory)
 }
 
 func (r *Runner) parseConfigurationPhaseOne(ctx context.Context, opts *runserver.Options) (*configapi.EndpointPickerConfig, error) {
