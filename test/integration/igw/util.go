@@ -53,6 +53,8 @@ const (
 	headerKeyContentLength       = "Content-Length"
 	extprocConnSetupTimeout      = 10 * time.Second
 	extPorcConnSetupPollInterval = 50 * time.Millisecond
+	GenerateGRPCMethodName       = "/vllm.grpc.engine.VllmEngine/Generate"
+	EmbedGRPCMethodName          = "/vllm.grpc.engine.VllmEngine/Embed"
 )
 
 // --- Request Builders (Protocol Level) ---
@@ -69,13 +71,13 @@ func ReqLLM(logger logr.Logger, prompt, model, targetModel string) []*extProcPb.
 
 func ReqLLMWithStream(logger logr.Logger, prompt, model, targetModel string) []*extProcPb.ProcessingRequest {
 	requests := make([]*extProcPb.ProcessingRequest, 0, 2)
-	requests = append(requests, gnereateHeaders(model, targetModel, nil))
+	requests = append(requests, generateHeaders(model, targetModel, nil, nil))
 	requests = append(requests, GenerateRequestWithStream(logger, prompt, model, nil))
 	return requests
 }
 
-func ReqGRPCLLM(logger logr.Logger, prompt, inferenceObjective string) []*extProcPb.ProcessingRequest {
-	return GenerateStreamedGRPCRequestSet(logger, prompt, inferenceObjective, nil)
+func ReqGRPCLLM(logger logr.Logger, prompt, inferenceObjective, methodName string) []*extProcPb.ProcessingRequest {
+	return GenerateStreamedGRPCRequestSet(logger, prompt, inferenceObjective, nil, methodName)
 }
 
 // ReqLLMUnary creates a single `ProcessingRequest` containing a complete JSON body.
@@ -179,38 +181,41 @@ func GenerateRequestWithStream(logger logr.Logger, prompt, model string, filterM
 	return generateRequestFromBytes(llmReq, filterMetadata)
 }
 
-func GenerateGRPCRequestWithStream(logger logr.Logger, prompt string, filterMetadata []string) *extProcPb.ProcessingRequest {
-	req := &pb.GenerateRequest{
-		Input: &pb.GenerateRequest_Text{
-			Text: prompt,
-		},
-		Stream: true,
-	}
-	payload, _ := CreateGrpcPayload(req)
-	return generateRequestFromBytes(payload, filterMetadata)
-}
-
-func ReqGRPCLLMWithStream(logger logr.Logger, prompt, inferenceObjective string) []*extProcPb.ProcessingRequest {
-	requests := make([]*extProcPb.ProcessingRequest, 0, 2)
-	requests = append(requests, gnereateHeaders(inferenceObjective, "", nil))
-	requests = append(requests, GenerateGRPCRequestWithStream(logger, prompt, nil))
-	return requests
-}
-
-func GenerateGRPCRequest(logger logr.Logger, prompt string, filterMetadata []string) *extProcPb.ProcessingRequest {
-	req := &pb.GenerateRequest{
-		Input: &pb.GenerateRequest_Text{
-			Text: prompt,
-		},
-	}
-
+func GenerateGRPCRequest(logger logr.Logger, prompt, methodName string, stream bool, filterMetadata []string) *extProcPb.ProcessingRequest {
+	req := GRPCRequestProto(prompt, methodName, stream)
 	// Panic on marshal failure is acceptable in test helpers as it implies a bug in the test code itself.
 	payload, err := CreateGrpcPayload(req)
 	if err != nil {
 		panic(fmt.Errorf("failed to marshal LLM request: %w", err))
 	}
-
 	return generateRequestFromBytes(payload, filterMetadata)
+}
+
+func ReqGRPCLLMWithStream(logger logr.Logger, prompt, inferenceObjective, methodName string) []*extProcPb.ProcessingRequest {
+	requests := make([]*extProcPb.ProcessingRequest, 0, 2)
+	requests = append(requests, generateHeaders(inferenceObjective, "", nil, map[string]string{":path": methodName}))
+	requests = append(requests, GenerateGRPCRequest(logger, prompt, methodName, true, nil))
+	return requests
+}
+
+func GRPCRequestProto(prompt, methodName string, stream bool) proto.Message {
+	var req proto.Message
+	switch methodName {
+	case GenerateGRPCMethodName:
+		req = &pb.GenerateRequest{
+			Input: &pb.GenerateRequest_Text{
+				Text: prompt,
+			},
+			Stream: stream,
+		}
+	case EmbedGRPCMethodName:
+		req = &pb.EmbedRequest{
+			Tokenized: &pb.TokenizedInput{
+				OriginalText: prompt,
+			},
+		}
+	}
+	return req
 }
 
 func generateRequestFromBytes(payload []byte, filterMetadata []string) *extProcPb.ProcessingRequest {
@@ -250,7 +255,7 @@ func GenerateStreamedRequestSet(
 	requests := make([]*extProcPb.ProcessingRequest, 0, 2)
 
 	// Headers
-	requests = append(requests, gnereateHeaders(model, targetModel, filterMetadata))
+	requests = append(requests, generateHeaders(model, targetModel, filterMetadata, nil))
 
 	// Body
 	requests = append(requests, GenerateRequest(logger, prompt, model, filterMetadata))
@@ -265,18 +270,19 @@ func GenerateStreamedGRPCRequestSet(
 	prompt string,
 	inferenceObjective string, // Set to non-empty to set x-gateway-inference-objective value
 	filterMetadata []string,
+	methodName string,
 ) []*extProcPb.ProcessingRequest {
 	requests := make([]*extProcPb.ProcessingRequest, 0, 2)
 
 	// Headers
-	requests = append(requests, gnereateHeaders(inferenceObjective, "", filterMetadata)) // GRPC payload does not need model and dose not support TargetModel.
+	requests = append(requests, generateHeaders(inferenceObjective, "", filterMetadata, map[string]string{":path": methodName})) // GRPC payload does not need model and dose not support TargetModel.
 
 	// Body
-	requests = append(requests, GenerateGRPCRequest(logger, prompt, filterMetadata))
+	requests = append(requests, GenerateGRPCRequest(logger, prompt, methodName, false, filterMetadata))
 	return requests
 }
 
-func gnereateHeaders(inferenceObjective, targetModel string, filterMetadata []string) *extProcPb.ProcessingRequest {
+func generateHeaders(inferenceObjective, targetModel string, filterMetadata []string, customHeaders map[string]string) *extProcPb.ProcessingRequest {
 	headers := []*envoyCorev3.HeaderValue{
 		{Key: "hi", Value: "mom"},
 		{Key: reqcommon.RequestIdHeaderKey, Value: "test-request-id"},
@@ -286,6 +292,9 @@ func gnereateHeaders(inferenceObjective, targetModel string, filterMetadata []st
 	}
 	if targetModel != "" {
 		headers = append(headers, &envoyCorev3.HeaderValue{Key: metadata.ModelNameRewriteKey, Value: targetModel})
+	}
+	for k, v := range customHeaders {
+		headers = append(headers, &envoyCorev3.HeaderValue{Key: k, Value: v})
 	}
 
 	return &extProcPb.ProcessingRequest{
