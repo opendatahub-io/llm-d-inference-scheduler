@@ -170,7 +170,7 @@ type mockDataSourceBackend struct {
 }
 
 func (b *mockDataSourceBackend) SetPodMetrics(m map[types.NamespacedName]*fwkdl.Metrics) {
-	b.mockDataSource.Metrics = m
+	b.mockDataSource.SetMetrics(m)
 	b.fakePmc.SetRes(m)
 }
 
