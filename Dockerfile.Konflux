@@ -4,7 +4,6 @@
 ## Tokenization is handled by a separate UDS tokenizer sidecar container
 ##
 ## CGO is still required for ZMQ (kvevents) but Python/vLLM dependencies are removed
-#
 
 # Go build stage - use UBI9 go-toolset which works for both ODH and RHOAI
 FROM registry.access.redhat.com/ubi9/go-toolset:1.25.7 AS go-builder
