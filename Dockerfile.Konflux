@@ -1,16 +1,16 @@
-ARG BUILD_MODE=ODH
-
 ## Minimal runtime Dockerfile (microdnf-only, no torch, wrapper in site-packages)
 ## Simplified EPP Dockerfile - UDS tokenizer only (no vLLM, no embedded tokenizer)
 ## This build uses the default kv-cache pool (UDS-only, no embedded_tokenizers build tag)
 ## Tokenization is handled by a separate UDS tokenizer sidecar container
 ##
 ## CGO is still required for ZMQ (kvevents) but Python/vLLM dependencies are removed
-# Go build stage
-ARG BASE_IMAGE_ODH=quay.io/projectquay/golang:1.25
-ARG BASE_IMAGE_RHOAI=registry.access.redhat.com/ubi9/go-toolset:1.25.7
-ARG BASE_IMAGE=${BASE_IMAGE_${BUILD_MODE}}
-FROM ${BASE_IMAGE} AS go-builder
+# Go build stage - Create base images for each BUILD_MODE
+FROM quay.io/projectquay/golang:1.25 AS base-ODH
+FROM registry.access.redhat.com/ubi9/go-toolset:1.25.7 AS base-RHOAI
+
+# Select base image based on BUILD_MODE
+ARG BUILD_MODE=ODH
+FROM base-${BUILD_MODE} AS go-builder
 
 ARG TARGETOS
 ARG TARGETARCH
