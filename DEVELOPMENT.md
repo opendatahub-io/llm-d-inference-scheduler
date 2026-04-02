@@ -71,6 +71,58 @@ make test-filter PATTERN=TestName           # epp tests matching pattern
 make test-filter PATTERN=TestName TYPE=sidecar
 ```
 
+### End-to-End Tests
+
+```bash
+make test-e2e
+```
+
+This creates a temporary Kind cluster named `e2e-tests`, runs the full test suite against it, and deletes the cluster on completion.
+
+**Keeping the cluster on failure**
+
+Set `E2E_KEEP_CLUSTER_ON_FAILURE=true` to preserve the cluster (and, when using a real cluster, all created Kubernetes objects) when any test fails. This is useful for inspecting pod logs, events, or cluster state after a failure.
+
+```bash
+E2E_KEEP_CLUSTER_ON_FAILURE=true make test-e2e
+```
+
+When set, a successful run still cleans up normally — the cluster is only kept if there is at least one test failure.
+
+**Accessing the cluster after a failure**
+
+E2E tests do not update the host's kubeconfig to point at the `e2e-tests` Kind cluster. After a preserved failure, export the kubeconfig manually:
+
+```bash
+# Merge into the default kubeconfig ($HOME/.kube/config or $KUBECONFIG)
+kind export kubeconfig --name e2e-tests
+
+# Or write to a specific file
+kind export kubeconfig --name e2e-tests --kubeconfig /path/to/kubeconfig
+```
+
+Then use it as normal:
+
+```bash
+kubectl --context kind-e2e-tests get pods
+```
+
+**Environment variables**
+
+| Variable | Default | Description |
+|---|---|---|
+| `E2E_KEEP_CLUSTER_ON_FAILURE` | `false` | Preserve the Kind cluster (or Kubernetes objects) when the suite fails |
+| `E2E_PORT` | `30080` | Host port mapped to the gateway NodePort |
+| `E2E_METRICS_PORT` | `32090` | Host port mapped to the EPP metrics NodePort |
+| `K8S_CONTEXT` | _(empty)_ | Use an existing cluster context instead of creating a Kind cluster |
+| `NAMESPACE` | `default` | Namespace to deploy test resources into |
+| `CONTAINER_RUNTIME` | `docker` | Container runtime used to load images into Kind (`docker` or `podman`) |
+| `READY_TIMEOUT` | `3m` | How long to wait for resources to become ready |
+| `EPP_IMAGE` | `ghcr.io/llm-d/llm-d-inference-scheduler:dev` | EPP image loaded into the Kind cluster |
+| `VLLM_SIMULATOR_IMAGE` | `ghcr.io/llm-d/llm-d-inference-sim:v0.8.1` | vLLM simulator image loaded into the Kind cluster |
+| `SIDECAR_IMAGE` | `ghcr.io/llm-d/llm-d-routing-sidecar:dev` | Routing sidecar image loaded into the Kind cluster |
+| `UDS_TOKENIZER_IMAGE` | `ghcr.io/llm-d/llm-d-uds-tokenizer:dev` | UDS tokenizer image loaded into the Kind cluster |
+
 ## Tokenization Architecture
 
 > [!NOTE]
@@ -141,7 +193,7 @@ kubectl --context kind-llm-d-inference-scheduler-dev get service inference-gatew
 You can now make requests matching the IP:port of one of the access mode above:
 
 ```bash
-curl -s -w '\n' http://<IP:port>/v1/completions -H 'Content-Type: application/json' -d '{"model":"food-review","prompt":"hi","max_tokens":10,"temperature":0}' | jq
+curl -s -w '\n' http://<IP:port>/v1/completions -H 'Content-Type: application/json' -d '{"model":"TinyLlama/TinyLlama-1.1B-Chat-v1.0","prompt":"hi","max_tokens":10,"temperature":0}' | jq
 ```
 
 By default the created inference gateway, can be accessed on port 30080. This can
@@ -260,7 +312,7 @@ Operators, etc.) to support the namespace-level development environments:
 Install Gateway API + GIE CRDs:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/latest/download/manifests.yaml
 ```
 

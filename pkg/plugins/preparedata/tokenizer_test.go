@@ -18,9 +18,9 @@ package preparedata
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
 
+	"github.com/llm-d/llm-d-kv-cache/pkg/tokenization"
 	tokenizerTypes "github.com/llm-d/llm-d-kv-cache/pkg/tokenization/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,14 +32,14 @@ import (
 
 type mockTokenizer struct {
 	renderFunc     func(prompt string) ([]uint32, []tokenizerTypes.Offset, error)
-	renderChatFunc func(req *tokenizerTypes.RenderChatRequest) ([]uint32, []tokenizerTypes.Offset, error)
+	renderChatFunc func(req *tokenizerTypes.RenderChatRequest) ([]uint32, *tokenization.MultiModalFeatures, error)
 }
 
 func (m *mockTokenizer) Render(prompt string) ([]uint32, []tokenizerTypes.Offset, error) {
 	return m.renderFunc(prompt)
 }
 
-func (m *mockTokenizer) RenderChat(req *tokenizerTypes.RenderChatRequest) ([]uint32, []tokenizerTypes.Offset, error) {
+func (m *mockTokenizer) RenderChat(req *tokenizerTypes.RenderChatRequest) ([]uint32, *tokenization.MultiModalFeatures, error) {
 	return m.renderChatFunc(req)
 }
 
@@ -100,121 +100,6 @@ func TestTokenizerPluginFactory_Validation(t *testing.T) {
 	}
 }
 
-func TestTokenizerPlugin_ProducesAndConsumes(t *testing.T) {
-	p := newTestPlugin(nil)
-
-	produces := p.Produces()
-	require.NotNil(t, produces)
-	assert.Contains(t, produces, TokenizedPromptKey)
-	assert.IsType(t, scheduling.TokenizedPrompt{}, produces[TokenizedPromptKey])
-
-	assert.Nil(t, p.Consumes())
-}
-
-func TestTokenizerPlugin_PrepareRequestData(t *testing.T) {
-	fakeTokenIDs := []uint32{10, 20, 30, 40}
-
-	tok := &mockTokenizer{
-		renderFunc: func(prompt string) ([]uint32, []tokenizerTypes.Offset, error) {
-			return fakeTokenIDs, nil, nil
-		},
-		renderChatFunc: func(req *tokenizerTypes.RenderChatRequest) ([]uint32, []tokenizerTypes.Offset, error) {
-			return fakeTokenIDs, nil, nil
-		},
-	}
-
-	tests := []struct {
-		name          string
-		request       *scheduling.LLMRequest
-		tokenizer     tokenizer
-		wantTokenIDs  []uint32
-		wantNilPrompt bool
-	}{
-		{
-			name: "skips when already tokenized",
-			request: &scheduling.LLMRequest{
-				TokenizedPrompt: &scheduling.TokenizedPrompt{TokenIDs: []uint32{1, 2, 3}},
-				Body: &scheduling.LLMRequestBody{
-					Completions: &scheduling.CompletionsRequest{Prompt: "hello"},
-				},
-			},
-			tokenizer:    nil, // would panic if called
-			wantTokenIDs: []uint32{1, 2, 3},
-		},
-		{
-			name:          "skips nil body",
-			request:       &scheduling.LLMRequest{Body: nil},
-			tokenizer:     nil,
-			wantNilPrompt: true,
-		},
-		{
-			name: "skips unsupported request type",
-			request: &scheduling.LLMRequest{
-				Body: &scheduling.LLMRequestBody{},
-			},
-			tokenizer:     nil,
-			wantNilPrompt: true,
-		},
-		{
-			name: "tokenizes completions request",
-			request: &scheduling.LLMRequest{
-				Body: &scheduling.LLMRequestBody{
-					Completions: &scheduling.CompletionsRequest{
-						Prompt: "The quick brown fox",
-					},
-				},
-			},
-			tokenizer:    tok,
-			wantTokenIDs: fakeTokenIDs,
-		},
-		{
-			name: "tokenizes chat completions request",
-			request: &scheduling.LLMRequest{
-				Body: &scheduling.LLMRequestBody{
-					ChatCompletions: &scheduling.ChatCompletionsRequest{
-						Messages: []scheduling.Message{
-							{Role: "user", Content: scheduling.Content{Raw: "Hello"}},
-						},
-					},
-				},
-			},
-			tokenizer:    tok,
-			wantTokenIDs: fakeTokenIDs,
-		},
-		{
-			name: "fail-open on tokenization error",
-			request: &scheduling.LLMRequest{
-				Body: &scheduling.LLMRequestBody{
-					Completions: &scheduling.CompletionsRequest{Prompt: "fail"},
-				},
-			},
-			tokenizer: &mockTokenizer{
-				renderFunc: func(string) ([]uint32, []tokenizerTypes.Offset, error) {
-					return nil, nil, errors.New("tokenizer exploded")
-				},
-			},
-			wantNilPrompt: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := utils.NewTestContext(t)
-			p := newTestPlugin(tt.tokenizer)
-
-			err := p.PrepareRequestData(ctx, tt.request, nil)
-			require.NoError(t, err)
-
-			if tt.wantNilPrompt {
-				assert.Nil(t, tt.request.TokenizedPrompt)
-			} else {
-				require.NotNil(t, tt.request.TokenizedPrompt)
-				assert.Equal(t, tt.wantTokenIDs, tt.request.TokenizedPrompt.TokenIDs)
-			}
-		})
-	}
-}
-
 func TestChatCompletionsToRenderChatRequest(t *testing.T) {
 	chat := &scheduling.ChatCompletionsRequest{
 		Messages: []scheduling.Message{
@@ -227,15 +112,113 @@ func TestChatCompletionsToRenderChatRequest(t *testing.T) {
 		ReturnAssistantTokensMask: true,
 	}
 
-	result := chatCompletionsToRenderChatRequest(chat)
+	result := ChatCompletionsToRenderChatRequest(chat)
 
 	require.Len(t, result.Conversation, 2)
 	assert.Equal(t, "system", result.Conversation[0].Role)
-	assert.Equal(t, "You are a helpful assistant.", result.Conversation[0].Content)
+	assert.Equal(t, tokenizerTypes.Content{Raw: "You are a helpful assistant."}, result.Conversation[0].Content)
 	assert.Equal(t, "user", result.Conversation[1].Role)
-	assert.Equal(t, "Hello!", result.Conversation[1].Content)
+	assert.Equal(t, tokenizerTypes.Content{Raw: "Hello!"}, result.Conversation[1].Content)
 	assert.Equal(t, "template", result.ChatTemplate)
 	assert.True(t, result.AddGenerationPrompt)
 	assert.False(t, result.ContinueFinalMessage)
 	assert.True(t, result.ReturnAssistantTokensMask)
+}
+
+func TestChatCompletionsToRenderChatRequest_MultimodalContent(t *testing.T) {
+	tests := []struct {
+		name     string
+		messages []scheduling.Message
+		wantConv []tokenizerTypes.Conversation
+	}{
+		{
+			name: "single image with text",
+			messages: []scheduling.Message{
+				{Role: "user", Content: scheduling.Content{
+					Structured: []scheduling.ContentBlock{
+						{Type: "text", Text: "Describe this image"},
+						{Type: "image_url", ImageURL: scheduling.ImageBlock{Url: "data:image/png;base64,abc123"}},
+					},
+				}},
+			},
+			wantConv: []tokenizerTypes.Conversation{
+				{Role: "user", Content: tokenizerTypes.Content{
+					Structured: []tokenizerTypes.ContentBlock{
+						{Type: "text", Text: "Describe this image"},
+						{Type: "image_url", ImageURL: tokenizerTypes.ImageBlock{URL: "data:image/png;base64,abc123"}},
+					},
+				}},
+			},
+		},
+		{
+			name: "system text message plus multimodal user message",
+			messages: []scheduling.Message{
+				{Role: "system", Content: scheduling.Content{Raw: "You are a visual analyst."}},
+				{Role: "user", Content: scheduling.Content{
+					Structured: []scheduling.ContentBlock{
+						{Type: "text", Text: "Compare these two images"},
+						{Type: "image_url", ImageURL: scheduling.ImageBlock{Url: "data:image/png;base64,img1"}},
+						{Type: "image_url", ImageURL: scheduling.ImageBlock{Url: "data:image/png;base64,img2"}},
+					},
+				}},
+			},
+			wantConv: []tokenizerTypes.Conversation{
+				{Role: "system", Content: tokenizerTypes.Content{Raw: "You are a visual analyst."}},
+				{Role: "user", Content: tokenizerTypes.Content{
+					Structured: []tokenizerTypes.ContentBlock{
+						{Type: "text", Text: "Compare these two images"},
+						{Type: "image_url", ImageURL: tokenizerTypes.ImageBlock{URL: "data:image/png;base64,img1"}},
+						{Type: "image_url", ImageURL: tokenizerTypes.ImageBlock{URL: "data:image/png;base64,img2"}},
+					},
+				}},
+			},
+		},
+		{
+			name: "multi-turn with image in history",
+			messages: []scheduling.Message{
+				{Role: "user", Content: scheduling.Content{
+					Structured: []scheduling.ContentBlock{
+						{Type: "text", Text: "What is in this image?"},
+						{Type: "image_url", ImageURL: scheduling.ImageBlock{Url: "https://example.com/img.jpg"}},
+					},
+				}},
+				{Role: "assistant", Content: scheduling.Content{Raw: "I see a dog."}},
+				{Role: "user", Content: scheduling.Content{Raw: "What breed is it?"}},
+			},
+			wantConv: []tokenizerTypes.Conversation{
+				{Role: "user", Content: tokenizerTypes.Content{
+					Structured: []tokenizerTypes.ContentBlock{
+						{Type: "text", Text: "What is in this image?"},
+						{Type: "image_url", ImageURL: tokenizerTypes.ImageBlock{URL: "https://example.com/img.jpg"}},
+					},
+				}},
+				{Role: "assistant", Content: tokenizerTypes.Content{Raw: "I see a dog."}},
+				{Role: "user", Content: tokenizerTypes.Content{Raw: "What breed is it?"}},
+			},
+		},
+		{
+			name: "text-only messages produce no Structured field",
+			messages: []scheduling.Message{
+				{Role: "user", Content: scheduling.Content{Raw: "Hello!"}},
+			},
+			wantConv: []tokenizerTypes.Conversation{
+				{Role: "user", Content: tokenizerTypes.Content{Raw: "Hello!"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chat := &scheduling.ChatCompletionsRequest{Messages: tt.messages}
+			result := ChatCompletionsToRenderChatRequest(chat)
+			require.Len(t, result.Conversation, len(tt.wantConv))
+			for i, want := range tt.wantConv {
+				got := result.Conversation[i]
+				assert.Equal(t, want.Role, got.Role)
+				assert.Equal(t, want.Content.Raw, got.Content.Raw)
+				assert.Equal(t, want.Content.Structured, got.Content.Structured,
+					"message %d: Structured content mismatch", i)
+			}
+		})
+	}
 }
