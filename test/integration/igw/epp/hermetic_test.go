@@ -133,6 +133,42 @@ func TestFullDuplexStreamed_KubeInferenceObjectiveRequest(t *testing.T) {
 					},
 				},
 				{
+					name: "passthrough parser success",
+					configText: `
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+  - type: queue-scorer
+  - type: kv-cache-utilization-scorer
+  - type: passthrough-parser
+schedulingProfiles:
+  - name: default
+    plugins:
+      - pluginRef: queue-scorer
+      - pluginRef: kv-cache-utilization-scorer
+parser:
+  pluginRef: passthrough-parser
+`,
+					requests: integration.ReqRaw(
+						map[string]string{
+							"hi":                         "mom",
+							reqcommon.RequestIdHeaderKey: "test-request-id",
+							metadata.ObjectiveKey:        modelMyModel, // With passthrough parser, the objective key can still be used to specify priority.
+						},
+						"passthrough-parser",
+					),
+					pods: []podState{
+						P(0, 3, 0.2),
+						P(1, 0, 0.1), // Winner
+						P(2, 10, 0.2),
+					},
+					wantResponses: ExpectPassthroughRouteTo("192.168.1.2:8000", []byte("passthrough-parser")),
+					wantMetrics: map[string]string{
+						"inference_objective_request_total": cleanMetric(metricReqTotal("", "", prio(2))),
+						"inference_pool_ready_pods":         cleanMetric(metricReadyPods(3)),
+					},
+				},
+				{
 					name:     "do not shed requests by default",
 					requests: integration.ReqLLM(logger, "test4", modelSQLLora, modelSQLLoraTarget),
 					pods: []podState{
@@ -181,6 +217,22 @@ func TestFullDuplexStreamed_KubeInferenceObjectiveRequest(t *testing.T) {
 					wantMetrics: map[string]string{
 						"inference_objective_request_total": cleanMetric(metricReqTotal(modelSheddable, modelSheddableTarget, prio(0))),
 					},
+				},
+				{
+					name:     "no backend pods available",
+					requests: integration.ReqHeaderOnly(map[string]string{"content-type": "application/json"}),
+					pods:     nil,
+					wantResponses: ExpectReject(envoyTypePb.StatusCode_InternalServerError,
+						"inference error: Internal - no pods available in datastore"),
+				},
+				{
+					name: "request missing model field",
+					requests: integration.ReqRaw(
+						map[string]string{"content-type": "application/json"},
+						`{"prompt":"hello world"}`,
+					),
+					wantResponses: ExpectReject(envoyTypePb.StatusCode_BadRequest,
+						"inference error: BadRequest - model not found in request body"),
 				},
 
 				// --- Subsetting & Metadata ---
@@ -364,6 +416,10 @@ func TestFullDuplexStreamed_KubeInferenceObjectiveRequest(t *testing.T) {
 						harnessOpts = append(harnessOpts, WithStandaloneMode(executionMode.standaloneStrategy))
 					} else {
 						harnessOpts = append(harnessOpts, WithStandardMode())
+					}
+
+					if tc.configText != "" {
+						harnessOpts = append(harnessOpts, WithConfigText(tc.configText))
 					}
 
 					h = NewTestHarness(t, ctx, harnessOpts...)
