@@ -16,9 +16,6 @@ USER root
 
 WORKDIR /workspace
 
-# Copy Red Hat repository configuration for zeromq packages (RHOAI only, but doesn't hurt to copy for ODH)
-COPY rhelai.repo /etc/yum.repos.d/rhelai.repo
-
 # Install ZMQ development libraries (required for CGO)
 RUN if [ "$BUILD_MODE" = "RHOAI" ]; then \
       dnf install -y zeromq-devel pkgconfig ; \
@@ -51,9 +48,6 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7
 ARG BUILD_MODE=ODH
 
 WORKDIR /
-
-# Copy Red Hat repository configuration for zeromq packages (RHOAI only)
-COPY rhelai.repo /etc/yum.repos.d/rhelai.repo
 
 # Install ZMQ runtime library only (no Python needed)
 RUN if [ "$BUILD_MODE" = "RHOAI" ]; then \
