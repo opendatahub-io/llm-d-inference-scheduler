@@ -8,6 +8,7 @@ metadata:
     {{- include "gateway-api-inference-extension.labels" . | nindent 4 }}
 spec:
   targetPortNumber: {{ .Values.inferencePool.targetPortNumber | default 8000 }}
+  appProtocol: {{ if eq .Values.inferencePool.modelServerProtocol "grpc" }}"kubernetes.io/h2c"{{ else }}{{ .Values.inferencePool.appProtocol | default "http" }}{{ end }}
   selector:
     {{- if .Values.inferencePool.modelServers.matchLabels }}
     {{- range $key, $value := .Values.inferencePool.modelServers.matchLabels }}
@@ -32,6 +33,7 @@ spec:
     {{- range .Values.inferencePool.targetPorts }}
       - number: {{ .number }}
     {{- end }}
+  appProtocol: {{ if eq .Values.inferencePool.modelServerProtocol "grpc" }}"kubernetes.io/h2c"{{ else }}{{ .Values.inferencePool.appProtocol | default "http" }}{{ end }}
   selector:
     matchLabels:
       {{- if .Values.inferencePool.modelServers.matchLabels }}

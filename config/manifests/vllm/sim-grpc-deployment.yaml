@@ -21,7 +21,7 @@ spec:
         - --model
         - Qwen/Qwen3-32B
         - --port
-        - "50051"
+        - "8000"
         env:
         - name: POD_NAME
           valueFrom:
@@ -32,7 +32,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         ports:
-        - containerPort: 50051
+        - containerPort: 8000
           name: grpc
           protocol: TCP
         resources:
