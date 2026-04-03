@@ -15,6 +15,12 @@ data:
       {{- $modelServerProtocol = .Values.inferencePool.modelServerProtocol | default "http" }}
       {{- $modelServerType = .Values.inferencePool.modelServerType | default "vllm" }}
     {{- end }}
+    {{- $parserType := "" }}
+    {{- if and (eq (lower $modelServerType) "vllm") (eq (lower $modelServerProtocol) "grpc") }}
+      {{- $parserType = "vllmgrpc-parser" }}
+    {{- else if and .Values.inferencePool .Values.inferencePool.parser }}
+      {{- $parserType = .Values.inferencePool.parser }}
+    {{- end }}
     apiVersion: inference.networking.x-k8s.io/v1alpha1
     kind: EndpointPickerConfig
     plugins:
@@ -27,9 +33,8 @@ data:
         path: {{ .Values.inferenceExtension.metricsDataSource.path | default "/metrics" | quote }}
         insecureSkipVerify: {{ .Values.inferenceExtension.metricsDataSource.insecureSkipVerify | default true }}
     - type: core-metrics-extractor
-    {{- if and (eq (lower $modelServerType) "vllm") (eq (lower $modelServerProtocol) "grpc") }}
-    - name: vllmgrpcParser
-      type: vllmgrpc-parser
+    {{- if $parserType }}
+    - type: {{ $parserType }}
     {{- end }}
     {{- if .Values.inferenceExtension.latencyPredictor.enabled }}
     - type: predicted-latency-scorer
@@ -70,9 +75,9 @@ data:
       - pluginRef: prefix-cache-scorer
         weight: 3
     {{- end }}
-    {{- if and (eq (lower $modelServerType) "vllm") (eq (lower $modelServerProtocol) "grpc") }}
+    {{- if $parserType }}
     parser:
-      pluginRef: vllmgrpcParser
+      pluginRef: {{ $parserType }}
     {{- end }}
   {{- if (hasKey .Values.inferenceExtension "pluginsCustomConfig") }}
   {{- .Values.inferenceExtension.pluginsCustomConfig | toYaml | nindent 2 }}
