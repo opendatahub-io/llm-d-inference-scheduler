@@ -38,3 +38,10 @@ COPY --from=builder /workspace/bin/pd-sidecar /app/pd-sidecar
 USER 65532:65532
 
 ENTRYPOINT ["/app/pd-sidecar"]
+
+LABEL com.redhat.component="odh-llm-d-routing-sidecar" \
+      name="odh-llm-d-routing-sidecar" \
+      description="odh-llm-d-routing-sidecar" \
+      summary="odh-llm-d-routing-sidecar" \
+      io.k8s.display-name="odh-llm-d-routing-sidecar" \
+      io.k8s.description="odh-llm-d-routing-sidecar"
