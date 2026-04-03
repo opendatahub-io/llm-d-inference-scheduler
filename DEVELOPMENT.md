@@ -8,8 +8,7 @@ Documentation for developing the inference scheduler.
 - [Golang] `v1.24`+
 - [Docker] (or [Podman])
 - [Kubernetes in Docker (KIND)]
-- [Kubectl] `v1.14`+
-- [ZeroMQ]
+- [Kubectl] `v1.25`+
 
 [Make]:https://www.gnu.org/software/make/
 [Golang]:https://go.dev/
@@ -17,26 +16,138 @@ Documentation for developing the inference scheduler.
 [Podman]:https://podman.io/
 [Kubernetes in Docker (KIND)]:https://github.com/kubernetes-sigs/kind
 [Kubectl]:https://kubectl.docs.kubernetes.io/installation/kubectl/
-[ZeroMQ]:https://zeromq.org/
 
 > [!NOTE]
-> **Python is NOT required** as of v0.5.1. Tokenization is handled by a separate UDS (Unix Domain Socket) tokenizer sidecar container. Previous versions (< v0.5.1) used embedded Python tokenizers with daulet/tokenizers bindings, but these are now deprecated.
+> Before committing and pushing changes to an upstream repository, you may want to 
+> explicitly run the `make presubmit` target to avoid failing PR checks. The checks
+> are also performed as part of a GitHub action, but running locally can save time
+> and an iteration.
+
+## Running Tests
+
+### Unit Tests
+
+Coverage and race detection are always enabled.
+
+```bash
+make test-unit          # run all unit tests (epp + sidecar)
+make test-unit-epp      # epp only
+make test-unit-sidecar  # sidecar only
+```
+
+Coverage profiles are written to `coverage/` (gitignored). To generate
+an HTML report and open it in a browser:
+
+```bash
+make coverage-report
+open coverage/epp.html
+```
+
+### Comparing Coverage Against a Baseline
+
+To see how your changes affect coverage relative to `main`:
+
+```bash
+make test-unit          # run tests on your branch first
+make coverage-compare   # builds a baseline from main in a temp worktree, then diffs
+```
+
+To compare against a different ref:
+
+```bash
+make coverage-compare BASE_REF=release-0.5
+```
+
+### Integration Tests
+
+```bash
+make test-integration   # coverage and race detection always enabled
+```
+
+### Filtered Tests
+
+```bash
+make test-filter PATTERN=TestName           # epp tests matching pattern
+make test-filter PATTERN=TestName TYPE=sidecar
+```
+
+### End-to-End Tests
+
+```bash
+make test-e2e
+```
+
+This creates a temporary Kind cluster named `e2e-tests`, runs the full test suite against it, and deletes the cluster on completion.
+
+**Keeping the cluster on failure**
+
+Set `E2E_KEEP_CLUSTER_ON_FAILURE=true` to preserve the cluster (and, when using a real cluster, all created Kubernetes objects) when any test fails. This is useful for inspecting pod logs, events, or cluster state after a failure.
+
+```bash
+E2E_KEEP_CLUSTER_ON_FAILURE=true make test-e2e
+```
+
+When set, a successful run still cleans up normally — the cluster is only kept if there is at least one test failure.
+
+**Accessing the cluster after a failure**
+
+E2E tests do not update the host's kubeconfig to point at the `e2e-tests` Kind cluster. After a preserved failure, export the kubeconfig manually:
+
+```bash
+# Merge into the default kubeconfig ($HOME/.kube/config or $KUBECONFIG)
+kind export kubeconfig --name e2e-tests
+
+# Or write to a specific file
+kind export kubeconfig --name e2e-tests --kubeconfig /path/to/kubeconfig
+```
+
+Then use it as normal:
+
+```bash
+kubectl --context kind-e2e-tests get pods
+```
+
+**Environment variables**
+
+| Variable | Default | Description |
+|---|---|---|
+| `E2E_KEEP_CLUSTER_ON_FAILURE` | `false` | Preserve the Kind cluster (or Kubernetes objects) when the suite fails |
+| `E2E_PORT` | `30080` | Host port mapped to the gateway NodePort |
+| `E2E_METRICS_PORT` | `32090` | Host port mapped to the EPP metrics NodePort |
+| `K8S_CONTEXT` | _(empty)_ | Use an existing cluster context instead of creating a Kind cluster |
+| `NAMESPACE` | `default` | Namespace to deploy test resources into |
+| `CONTAINER_RUNTIME` | `docker` | Container runtime used to load images into Kind (`docker` or `podman`) |
+| `READY_TIMEOUT` | `3m` | How long to wait for resources to become ready |
+| `EPP_IMAGE` | `ghcr.io/llm-d/llm-d-inference-scheduler:dev` | EPP image loaded into the Kind cluster |
+| `VLLM_SIMULATOR_IMAGE` | `ghcr.io/llm-d/llm-d-inference-sim:v0.8.1` | vLLM simulator image loaded into the Kind cluster |
+| `SIDECAR_IMAGE` | `ghcr.io/llm-d/llm-d-routing-sidecar:dev` | Routing sidecar image loaded into the Kind cluster |
+| `UDS_TOKENIZER_IMAGE` | `ghcr.io/llm-d/llm-d-uds-tokenizer:dev` | UDS tokenizer image loaded into the Kind cluster |
 
 ## Tokenization Architecture
 
+> [!NOTE]
+> **Python is NOT required**. Previous EPP versions (before v0.5.1) used embedded Python tokenizers.
+
 The project uses **UDS (Unix Domain Socket)** tokenization. Tokenization is handled by a separate UDS tokenizer sidecar container, not by the EPP container itself. Previous embedded tokenizer approaches (daulet/tokenizers, direct Python/vLLM linking) are deprecated and no longer used.
 
-**Building the UDS tokenizer image:**
+The UDS tokenizer image is built and published by the [llm-d-kv-cache](https://github.com/llm-d/llm-d-kv-cache) repository.
+Published images are available: `ghcr.io/llm-d/llm-d-uds-tokenizer:<tag>`
 
-```bash
-make image-build-uds-tokenizer
-```
+- The `:dev` tag is kept up-to-date from the kv-cache `main` branch.
+- To use a specific release version, set `UDS_TOKENIZER_TAG` (or `UDS_TOKENIZER_IMAGE` for a fully custom reference):
 
-The image is tagged as `ghcr.io/llm-d/llm-d-uds-tokenizer:dev` by default. Override with:
+  ```bash
+  UDS_TOKENIZER_TAG=v0.7.0 make env-dev-kind
+  ```
 
-```bash
-UDS_TOKENIZER_TAG=v1.0.0 make image-build-uds-tokenizer
-```
+- To use a different registry, set `IMAGE_REGISTRY` (shared with all other images):
+
+  ```bash
+  IMAGE_REGISTRY=quay.io/my-org make env-dev-kind
+  ```
+
+- To build the image from source, see the kv-cache repo:
+  `make image-build-uds` in `llm-d-kv-cache/`
 
 ## Kind Development Environment
 
@@ -82,7 +193,7 @@ kubectl --context kind-llm-d-inference-scheduler-dev get service inference-gatew
 You can now make requests matching the IP:port of one of the access mode above:
 
 ```bash
-curl -s -w '\n' http://<IP:port>/v1/completions -H 'Content-Type: application/json' -d '{"model":"food-review","prompt":"hi","max_tokens":10,"temperature":0}' | jq
+curl -s -w '\n' http://<IP:port>/v1/completions -H 'Content-Type: application/json' -d '{"model":"TinyLlama/TinyLlama-1.1B-Chat-v1.0","prompt":"hi","max_tokens":10,"temperature":0}' | jq
 ```
 
 By default the created inference gateway, can be accessed on port 30080. This can
@@ -96,10 +207,36 @@ KIND_GATEWAY_HOST_PORT=<selected-port> make env-dev-kind
 **Where:** &lt;selected-port&gt; is the port on your local machine you want to use to
 access the inference gatyeway.
 
+### Prometheus Monitoring
+
+To deploy Prometheus alongside the dev environment:
+
+```bash
+PROM_ENABLED=true make env-dev-kind
+```
+
+Prometheus will be accessible at `http://localhost:30090`. To use a different host port:
+
+```bash
+PROM_ENABLED=true KIND_PROM_HOST_PORT=30091 make env-dev-kind
+```
+
+> [!NOTE]
+> Port mappings are baked into the Kind cluster at creation time. If you change
+> `PROM_ENABLED` or `KIND_PROM_HOST_PORT`, you must recreate the cluster:
+> `make clean-env-dev-kind` first.
+
+### Grafana Dashboard
+
+The upstream [Inference Gateway dashboard](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/tools/dashboards/inference_gateway.json) covers EPP, inference pool, and vLLM metrics.
+
+To use it: add a Prometheus datasource pointed at `http://localhost:30090`, then import
+the JSON via **Dashboards > New > Import**. See the [Grafana installation docs](https://grafana.com/docs/grafana/latest/setup-grafana/installation/) for setup.
+
 > [!NOTE]
 > If you require significant customization of this environment beyond
 > what the standard deployment provides, you can use the `deploy/components`
-> with `kustomize` to build your own highly customized environment. You can use
+> with `kubectl kustomize` to build your own highly customized environment. You can use
 > the `deploy/environments/kind` deployment as a reference for your own.
 
 [Kubernetes in Docker (KIND)]:https://github.com/kubernetes-sigs/kind
@@ -122,6 +259,13 @@ cluster. By default the image tag will be `dev`. It will also load `llm-d-infere
 ```bash
 EPP_TAG=0.0.4 make env-dev-kind
 ```
+
+> [!NOTE]
+> By default, images are built with debug symbols stripped (`-s -w`) for smaller size.
+> To build a debuggable image (e.g., for use with `dlv`), override `LDFLAGS`:
+> ```bash
+> LDFLAGS="" make image-build-epp
+> ```
 
 > [!NOTE]
 > If you want to load a different tag of llm-d-inference-sim, you can use the environment variable `VLLM_SIMULATOR_TAG` to specify it.
@@ -147,6 +291,13 @@ The setup can be split in two:
 This enables cluster sharing by multiple developers. In case of private/personal
 clusters, the `default` namespace can be used directly.
 
+### RBAC and Permissions
+
+EPP is namespace-scoped. Its `Role` grants `get/watch/list` on `inferencepools`
+and `pods`, plus `create` on `tokenreviews`/`subjectaccessreviews` for metrics
+auth (`--metrics-endpoint-auth=true`, the default). To disable metrics auth and
+avoid the cluster-scoped RBAC requirement, use `--metrics-endpoint-auth=false`.
+
 ### Setup - Infrastructure
 
 > [!CAUTION]
@@ -161,7 +312,7 @@ Operators, etc.) to support the namespace-level development environments:
 Install Gateway API + GIE CRDs:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/latest/download/manifests.yaml
 ```
 
