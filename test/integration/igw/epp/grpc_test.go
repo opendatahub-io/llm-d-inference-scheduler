@@ -51,6 +51,8 @@ schedulingProfiles:
       - pluginRef: lora-affinity-scorer
 parser:
   pluginRef: vllmgrpc-parser
+featureGates:
+  - enableLegacyMetrics
 `
 )
 
