@@ -5,7 +5,7 @@
 ##
 ## CGO is still required for ZMQ (kvevents) but Python/vLLM dependencies are removed
 # Go build stage
-FROM quay.io/projectquay/golang:1.25 AS go-builder
+FROM quay.io/projectquay/golang:1.26 AS go-builder
 
 ARG TARGETOS
 ARG TARGETARCH
