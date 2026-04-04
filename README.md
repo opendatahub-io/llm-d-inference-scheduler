@@ -1,3 +1,11 @@
+> **IMPORTANT**
+>
+> [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`main`) -> [opendatahub-io/llm-d-inference-scheduler](https://github.com/opendatahub-io/llm-d-inference-scheduler) (`main_2
+`) -> [red-hat-data-services/llm-d-inference-scheduler](https://github.com/red-hat-data-services/llm-d-inference-scheduler) (`main`)
+>
+> Changes should be contributed to the upstream [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) repository. They will flow downstream through the sync chain.
+
+
 [![Go Report Card](https://goreportcard.com/badge/github.com/llm-d/llm-d-inference-scheduler)](https://goreportcard.com/report/github.com/llm-d/llm-d-inference-scheduler)
 [![Go Reference](https://pkg.go.dev/badge/github.com/llm-d/llm-d-inference-scheduler.svg)](https://pkg.go.dev/github.com/llm-d/llm-d-inference-scheduler)
 [![License](https://img.shields.io/github/license/llm-d/llm-d-inference-scheduler)](/LICENSE)
