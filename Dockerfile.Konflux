@@ -6,7 +6,7 @@
 ## CGO is still required for ZMQ (kvevents) but Python/vLLM dependencies are removed
 
 # Go build stage - use UBI9 go-toolset which works for both ODH and RHOAI
-FROM registry.access.redhat.com/ubi9/go-toolset:1.25.7 AS go-builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.7-1775437082 AS go-builder
 
 ARG BUILD_MODE=ODH
 ARG TARGETOS
