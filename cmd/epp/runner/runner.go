@@ -67,6 +67,7 @@ import (
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/flowcontrol/saturationdetector/utilization"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/flowcontrol/usagelimits"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requestcontrol/admitter/latencyslo"
+	reqdataprodprefix "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requestcontrol/dataproducer/approximateprefix"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requestcontrol/requestattributereporter"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requestcontrol/requestdataproducer/inflightload"
 	latencyproducer "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requestcontrol/requestdataproducer/predictedlatency"
@@ -448,7 +449,7 @@ func setupDatastore(ctx context.Context, epFactory datalayer.EndpointFactory, mo
 
 // registerInTreePlugins registers the factory functions of all known plugins
 func (r *Runner) registerInTreePlugins() {
-	fwkplugin.Register(prefix.PrefixCachePluginType, prefix.PrefixCachePluginFactory)
+	fwkplugin.Register(prefix.PrefixCacheScorerPluginType, prefix.PrefixCachePluginFactory)
 	fwkplugin.Register(picker.MaxScorePickerType, picker.MaxScorePickerFactory)
 	fwkplugin.Register(picker.RandomPickerType, picker.RandomPickerFactory)
 	fwkplugin.Register(picker.WeightedRandomPickerType, picker.WeightedRandomPickerFactory)
@@ -465,6 +466,7 @@ func (r *Runner) registerInTreePlugins() {
 	fwkplugin.Register(ordering.EDFOrderingPolicyType, ordering.EDFOrderingPolicyFactory)
 	fwkplugin.Register(ordering.SLODeadlineOrderingPolicyType, ordering.SLODeadlineOrderingPolicyFactory)
 	fwkplugin.Register(usagelimits.StaticUsageLimitPolicyType, usagelimits.StaticPolicyFactory)
+	fwkplugin.Register(reqdataprodprefix.ApproxPrefixCachePluginType, reqdataprodprefix.ApproxPrefixCacheFactory)
 	// Latency predictor plugins (old monolith + new decomposed)
 	fwkplugin.Register(predictedlatency.PredictedLatencyPluginType, predictedlatency.PredictedLatencyFactory)
 	fwkplugin.Register(latencyproducer.LatencyDataProviderPluginType, latencyproducer.PredictedLatencyFactory)
@@ -512,7 +514,6 @@ func (r *Runner) parseConfigurationPhaseOne(ctx context.Context, opts *runserver
 	loader.RegisterFeatureGate(datalayer.ExperimentalDatalayerFeatureGate)
 	loader.RegisterFeatureGate(datalayer.EnableLegacyMetricsFeatureGate)
 	loader.RegisterFeatureGate(flowcontrol.FeatureGate)
-	loader.RegisterFeatureGate(datalayer.PrepareDataPluginsFeatureGate)
 
 	r.registerInTreePlugins()
 
@@ -573,11 +574,6 @@ func (r *Runner) parseConfigurationPhaseTwo(ctx context.Context, rawConfig *conf
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to load the configuration - %w", err)
-	}
-	// TODO(#1970): Remove feature gate check once prepare data plugins are stable.
-	if !r.featureGates[datalayer.PrepareDataPluginsFeatureGate] {
-		// If the feature gate is disabled, clear any prepare data plugins so they are not used.
-		r.requestControlConfig.WithPrepareDataPlugins()
 	}
 	// The plugins will be executed in topologically sorted order to ensure that data is produced before it is consumed.
 	r.requestControlConfig.OrderPrepareDataPlugins(dag)
