@@ -92,10 +92,8 @@ spec:
               # The pool namespace is optional because EPP can default to the NAMESPACE env var.
               - --pool-namespace
               - {{ .Release.Namespace }}
-          {{- if ne .Values.inferencePool.apiVersion "inference.networking.k8s.io" }}
               - --pool-group
-              - "{{ (split "/" .Values.inferencePool.apiVersion)._0 }}"
-          {{- end }}
+              - "inference.networking.k8s.io"
           {{- end }}
           {{- if not .Values.inferenceExtension.latencyPredictor.enabled }}
           # Legacy metric CLI flags (skipped when dataLayer is enabled via latency predictor).
