@@ -66,7 +66,7 @@ var (
 
 	containerRuntime  = env.GetEnvString("CONTAINER_RUNTIME", "docker", ginkgo.GinkgoLogr)
 	eppImage          = env.GetEnvString("EPP_IMAGE", "ghcr.io/llm-d/llm-d-inference-scheduler:dev", ginkgo.GinkgoLogr)
-	vllmSimImage      = env.GetEnvString("VLLM_SIMULATOR_IMAGE", "ghcr.io/llm-d/llm-d-inference-sim:v0.8.1", ginkgo.GinkgoLogr)
+	vllmSimImage      = env.GetEnvString("VLLM_SIMULATOR_IMAGE", "ghcr.io/llm-d/llm-d-inference-sim:v0.8.2", ginkgo.GinkgoLogr)
 	sideCarImage      = env.GetEnvString("SIDECAR_IMAGE", "ghcr.io/llm-d/llm-d-routing-sidecar:dev", ginkgo.GinkgoLogr)
 	udsTokenizerImage = env.GetEnvString("UDS_TOKENIZER_IMAGE", "ghcr.io/llm-d/llm-d-uds-tokenizer:dev", ginkgo.GinkgoLogr)
 	// nsName is the namespace in which the K8S objects will be created
@@ -127,9 +127,15 @@ var _ = ginkgo.AfterSuite(func() {
 	}
 })
 
-// ReportAfterSuite receives the full suite report, including failures in
-// BeforeSuite/AfterSuite, so keepClusterOnFailure works for all failure modes.
+// ReportAfterSuite receives the full suite report and uses report.SuiteSucceeded
+// to detect any failure, including failures in BeforeSuite/AfterSuite.
+// This is preferred over a suiteFailed flag tracked via ReportAfterEach because
+// ReportAfterEach only fires for individual specs and would miss setup/teardown failures.
 var _ = ginkgo.ReportAfterSuite("cleanup", func(report ginkgo.Report) {
+	if !report.SuiteSucceeded {
+		dumpPodsAndLogs()
+	}
+
 	shouldKeep := keepClusterOnFailure && !report.SuiteSucceeded
 	if k8sContext == "" {
 		if shouldKeep {
