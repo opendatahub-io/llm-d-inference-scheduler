@@ -30,8 +30,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (s *Server) runNIXLProtocolV2(w http.ResponseWriter, r *http.Request, prefillPodHostPort string) {
-	s.logger.V(4).Info("running NIXL protocol V2", "url", prefillPodHostPort)
+func (s *Server) runNIXLProtocolV2(w http.ResponseWriter, r *http.Request, prefillPodHostPort string, apiType APIType) {
+	tokenLimitFields := tokenLimitFieldsForAPIType(apiType)
+	s.logger.V(4).Info("running NIXL protocol V2", "url", prefillPodHostPort, "tokenLimitFields", tokenLimitFields)
 
 	// Read request body
 	defer r.Body.Close() //nolint:errcheck
@@ -80,10 +81,24 @@ func (s *Server) runNIXLProtocolV2(w http.ResponseWriter, r *http.Request, prefi
 
 	preq.Header.Add(requestHeaderRequestID, uuidStr)
 
+	// Save original values based on API type
 	streamValue, streamOk := completionRequest[requestFieldStream]
 	streamOptionsValue, streamOptionsOk := completionRequest[requestFieldStreamOptions]
-	maxTokensValue, maxTokensOk := completionRequest[requestFieldMaxTokens]
-	maxCompletionTokensValue, maxCompletionTokensOk := completionRequest[requestFieldMaxCompletionTokens]
+
+	// Save and override token limit fields for prefill
+	type savedField struct {
+		field   string
+		val     any
+		present bool
+	}
+	var savedTokenValues [2]savedField
+	for i, field := range tokenLimitFields {
+		if v, ok := completionRequest[field]; ok {
+			savedTokenValues[i] = savedField{field: field, val: v, present: true}
+		} else {
+			savedTokenValues[i] = savedField{field: field}
+		}
+	}
 
 	completionRequest[requestFieldKVTransferParams] = map[string]any{
 		requestFieldDoRemoteDecode:  true,
@@ -96,8 +111,10 @@ func (s *Server) runNIXLProtocolV2(w http.ResponseWriter, r *http.Request, prefi
 
 	completionRequest[requestFieldStream] = false
 	delete(completionRequest, requestFieldStreamOptions)
-	completionRequest[requestFieldMaxTokens] = 1
-	completionRequest[requestFieldMaxCompletionTokens] = 1
+
+	for _, field := range tokenLimitFields {
+		completionRequest[field] = 1
+	}
 
 	pbody, err := json.Marshal(completionRequest)
 	if err != nil {
@@ -202,14 +219,15 @@ func (s *Server) runNIXLProtocolV2(w http.ResponseWriter, r *http.Request, prefi
 	if streamOptionsOk {
 		completionRequest[requestFieldStreamOptions] = streamOptionsValue
 	}
-	delete(completionRequest, requestFieldMaxTokens)
-	if maxTokensOk {
-		completionRequest[requestFieldMaxTokens] = maxTokensValue
+
+	for i := range savedTokenValues[:len(tokenLimitFields)] {
+		sv := &savedTokenValues[i]
+		delete(completionRequest, sv.field)
+		if sv.present {
+			completionRequest[sv.field] = sv.val
+		}
 	}
-	delete(completionRequest, requestFieldMaxCompletionTokens)
-	if maxCompletionTokensOk {
-		completionRequest[requestFieldMaxCompletionTokens] = maxCompletionTokensValue
-	}
+
 	completionRequest[requestFieldKVTransferParams] = pKVTransferParams
 
 	dbody, err := json.Marshal(completionRequest)

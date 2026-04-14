@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -44,6 +45,7 @@ const (
 	requestFieldKVTransferParams    = "kv_transfer_params"
 	requestFieldMaxTokens           = "max_tokens"
 	requestFieldMaxCompletionTokens = "max_completion_tokens"
+	requestFieldMaxOutputTokens     = "max_output_tokens" // Used by Responses API
 	requestFieldDoRemotePrefill     = "do_remote_prefill"
 	requestFieldDoRemoteDecode      = "do_remote_decode"
 	requestFieldRemoteBlockIDs      = "remote_block_ids"
@@ -81,6 +83,46 @@ const (
 	// LegacyPoolGroup is the legacy pool group name
 	LegacyPoolGroup = "inference.networking.x-k8s.io"
 )
+
+// APIType represents the type of OpenAI API being used.
+type APIType int
+
+const (
+	// APITypeChatCompletions is the Chat Completions API (/v1/chat/completions, /v1/completions)
+	APITypeChatCompletions APIType = iota
+	// APITypeResponses is the Responses API (/v1/responses)
+	APITypeResponses
+)
+
+// String implements fmt.Stringer so structured logs show readable API names.
+func (a APIType) String() string {
+	switch a {
+	case APITypeChatCompletions:
+		return "chat_completions"
+	case APITypeResponses:
+		return "responses"
+	default:
+		return fmt.Sprintf("APIType(%d)", int(a))
+	}
+}
+
+// JSON request field names used for token limits in prefill/decode staging.
+// Do not mutate these slices.
+var (
+	chatCompletionTokenLimitFields = []string{requestFieldMaxTokens, requestFieldMaxCompletionTokens}
+	responsesStyleTokenLimitFields = []string{requestFieldMaxOutputTokens}
+)
+
+// tokenLimitFieldsForAPIType returns token limit field names for the given API.
+// Returned slices are shared package-level vars; callers must not mutate them.
+func tokenLimitFieldsForAPIType(api APIType) []string {
+	switch api {
+	case APITypeResponses:
+		return responsesStyleTokenLimitFields
+	default:
+		return chatCompletionTokenLimitFields
+	}
+}
 
 // Config represents the complete runtime configuration for the proxy server.
 type Config struct {
@@ -159,7 +201,10 @@ func (c Config) String() string {
 	return string(b)
 }
 
-type protocolRunner func(http.ResponseWriter, *http.Request, string)
+// pdConnectorRunner runs the configured P/D KV connector. The APIType lets each
+// connector decide internally which JSON fields (if any) need special handling.
+type pdConnectorRunner func(http.ResponseWriter, *http.Request, string, APIType)
+
 type epdProtocolRunner func(http.ResponseWriter, *http.Request, string, []string)
 
 // Server is the reverse proxy server
@@ -169,7 +214,7 @@ type Server struct {
 	readyCh                 chan struct{} // closed once addr is set and server is listening
 	handler                 http.Handler  // the handler function. either a Mux or a proxy
 	allowlistValidator      *AllowlistValidator
-	runPDConnectorProtocol  protocolRunner    // the handler for running the Prefiller-Decoder protocol
+	runPDConnectorProtocol  pdConnectorRunner // the handler for running the Prefiller-Decoder protocol
 	runEPDConnectorProtocol epdProtocolRunner // the handler for running the Encoder-Prefiller-Decoder protocol
 	prefillerURLPrefix      string
 	encoderURLPrefix        string
@@ -306,9 +351,13 @@ func (s *Server) setKVConnector() {
 
 	switch s.config.KVConnector {
 	case KVConnectorSharedStorage:
-		s.runPDConnectorProtocol = s.runSharedStorageProtocol
+		s.runPDConnectorProtocol = func(w http.ResponseWriter, r *http.Request, host string, _ APIType) {
+			s.runSharedStorageProtocol(w, r, host)
+		}
 	case KVConnectorSGLang:
-		s.runPDConnectorProtocol = s.runSGLangProtocol
+		s.runPDConnectorProtocol = func(w http.ResponseWriter, r *http.Request, host string, _ APIType) {
+			s.runSGLangProtocol(w, r, host)
+		}
 	case KVConnectorNIXLV2:
 		fallthrough
 	default:
@@ -341,8 +390,9 @@ func (s *Server) createRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	mux.HandleFunc("POST "+ChatCompletionsPath, s.chatCompletionsHandler) // /v1/chat/completions (openai)
-	mux.HandleFunc("POST "+CompletionsPath, s.chatCompletionsHandler)     // /v1/completions (legacy)
+	mux.HandleFunc("POST "+ChatCompletionsPath, s.disaggregatedPrefillHandler(APITypeChatCompletions))
+	mux.HandleFunc("POST "+CompletionsPath, s.disaggregatedPrefillHandler(APITypeChatCompletions))
+	mux.HandleFunc("POST "+ResponsesPath, s.disaggregatedPrefillHandler(APITypeResponses))
 
 	s.decoderProxy = s.createDecoderProxyHandler(s.config.DecoderURL, s.config.InsecureSkipVerifyForDecoder)
 
