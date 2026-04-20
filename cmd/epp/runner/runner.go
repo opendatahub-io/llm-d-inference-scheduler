@@ -258,7 +258,7 @@ func (r *Runner) setup(ctx context.Context, cfg *rest.Config, opts *runserver.Op
 	}
 
 	ds, err := setupDatastore(ctx, epf, int32(opts.ModelServerMetricsPort), startCrdReconcilers,
-		opts.PoolNamespace, opts.PoolName, opts.EndpointSelector, opts.EndpointTargetPorts)
+		gknn.Namespace, gknn.Name, opts.EndpointSelector, opts.EndpointTargetPorts)
 	if err != nil {
 		setupLog.Error(err, "Failed to setup datastore")
 		return nil, nil, err
@@ -413,10 +413,11 @@ func NewEndpointPoolFromOptions(
 	endpointSelector string,
 	endpointTargetPorts []int,
 ) (*datalayer.EndpointPool, error) {
-
+	// namespace is from epp namespace in standalone mode without inference api support
 	if namespace == "" {
 		return nil, errors.New("namespace must not be empty")
 	}
+	// name is from epp name in standalone mode without inference api support
 	if name == "" {
 		return nil, errors.New("name must not be empty")
 	}
