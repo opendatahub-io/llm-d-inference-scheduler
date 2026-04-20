@@ -17,7 +17,7 @@ import (
 	fwkdl "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/datalayer"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/scheduling"
 
-	tokenizer "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requestcontrol/dataproducer/tokenizer"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requestcontrol/dataproducer/tokenizer"
 	"github.com/llm-d/llm-d-inference-scheduler/test/utils"
 )
 
@@ -132,7 +132,7 @@ func TestPrefixCacheTracking_Score_UDS(t *testing.T) {
 				TargetModel: "test-model",
 				Body: &scheduling.LLMRequestBody{
 					Completions: &scheduling.CompletionsRequest{
-						Prompt: prompt,
+						Prompt: scheduling.Prompt{Raw: prompt},
 					},
 				},
 			},
@@ -145,7 +145,7 @@ func TestPrefixCacheTracking_Score_UDS(t *testing.T) {
 					require.NoError(t, err)
 				}()
 
-				tokens, _, err := udsTokenizer.Render(req.Completions.Prompt)
+				tokens, _, err := udsTokenizer.Render(req.Completions.Prompt.Raw)
 				require.NoError(t, err)
 
 				tokenProcessor, err := kvblock.NewChunkedTokenDatabase(kvblock.DefaultTokenProcessorConfig())
@@ -317,7 +317,7 @@ func TestPrefixCacheTracking_Score_UDS(t *testing.T) {
 				TargetModel: "test-model",
 				Body: &scheduling.LLMRequestBody{
 					Completions: &scheduling.CompletionsRequest{
-						Prompt: prompt,
+						Prompt: scheduling.Prompt{Raw: prompt},
 					},
 				},
 			},
@@ -330,7 +330,7 @@ func TestPrefixCacheTracking_Score_UDS(t *testing.T) {
 					require.NoError(t, err)
 				}()
 
-				tokens, _, err := udsTokenizer.Render(req.Completions.Prompt)
+				tokens, _, err := udsTokenizer.Render(req.Completions.Prompt.Raw)
 				require.NoError(t, err)
 
 				tokenProcessor, err := kvblock.NewChunkedTokenDatabase(kvblock.DefaultTokenProcessorConfig())
@@ -388,7 +388,7 @@ func TestPrefixCacheTracking_Score_UDS(t *testing.T) {
 				TargetModel: "test-model",
 				Body: &scheduling.LLMRequestBody{
 					Completions: &scheduling.CompletionsRequest{
-						Prompt: prompt,
+						Prompt: scheduling.Prompt{Raw: prompt},
 					},
 				},
 			},
@@ -401,7 +401,7 @@ func TestPrefixCacheTracking_Score_UDS(t *testing.T) {
 					require.NoError(t, err)
 				}()
 
-				tokens, _, err := udsTokenizer.Render(req.Completions.Prompt)
+				tokens, _, err := udsTokenizer.Render(req.Completions.Prompt.Raw)
 				require.NoError(t, err)
 
 				tokenProcessor, err := kvblock.NewChunkedTokenDatabase(kvblock.DefaultTokenProcessorConfig())
@@ -462,7 +462,7 @@ func TestPrefixCacheTracking_Score_UDS(t *testing.T) {
 				TargetModel: "test-model",
 				Body: &scheduling.LLMRequestBody{
 					Completions: &scheduling.CompletionsRequest{
-						Prompt: "This prompt has never been cached before on any endpoint.",
+						Prompt: scheduling.Prompt{Raw: "This prompt has never been cached before on any endpoint."},
 					},
 				},
 			},
@@ -510,7 +510,7 @@ func TestPrefixCacheTracking_Score_UDS(t *testing.T) {
 				TargetModel: "test-model",
 				Body: &scheduling.LLMRequestBody{
 					Completions: &scheduling.CompletionsRequest{
-						Prompt: prompt,
+						Prompt: scheduling.Prompt{Raw: prompt},
 					},
 				},
 			},
@@ -523,7 +523,7 @@ func TestPrefixCacheTracking_Score_UDS(t *testing.T) {
 					require.NoError(t, err)
 				}()
 
-				tokens, _, err := udsTokenizer.Render(req.Completions.Prompt)
+				tokens, _, err := udsTokenizer.Render(req.Completions.Prompt.Raw)
 				require.NoError(t, err)
 
 				tokenProcessor, err := kvblock.NewChunkedTokenDatabase(kvblock.DefaultTokenProcessorConfig())

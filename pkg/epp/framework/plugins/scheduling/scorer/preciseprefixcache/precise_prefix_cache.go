@@ -18,14 +18,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	logutil "sigs.k8s.io/gateway-api-inference-extension/pkg/common/observability/logging"
+	"sigs.k8s.io/gateway-api-inference-extension/pkg/common/observability/logging"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/plugin"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/requestcontrol"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/scheduling"
-	dl_prefix "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/attribute/prefix"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/scheduling/scorer/prefix"
+	approxprefix "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/attribute/prefix"
 
-	tokenizer "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requestcontrol/dataproducer/tokenizer"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requestcontrol/dataproducer/tokenizer"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/telemetry"
 )
 
@@ -332,7 +331,7 @@ func (s *Scorer) Category() scheduling.ScorerCategory {
 // Produces declares the data keys this plugin writes to endpoints.
 func (s *Scorer) Produces() map[string]any {
 	return map[string]any{
-		dl_prefix.PrefixCacheMatchInfoKey: dl_prefix.PrefixCacheMatchInfo{},
+		approxprefix.PrefixCacheMatchInfoKey: approxprefix.PrefixCacheMatchInfo{},
 	}
 }
 
@@ -390,7 +389,7 @@ func (s *Scorer) PrepareRequestData(ctx context.Context,
 		}
 		addr := fmt.Sprintf("%s:%s", md.Address, md.Port)
 		matchLen := int(scores[addr])
-		ep.Put(dl_prefix.PrefixCacheMatchInfoKey, dl_prefix.NewPrefixCacheMatchInfo(matchLen, len(blockKeys), blockSize))
+		ep.Put(approxprefix.PrefixCacheMatchInfoKey, approxprefix.NewPrefixCacheMatchInfo(matchLen, len(blockKeys), blockSize))
 	}
 
 	// 6. Save to PluginState for Score() and PreRequest()
@@ -399,7 +398,7 @@ func (s *Scorer) PrepareRequestData(ctx context.Context,
 		scores:    scores,
 	})
 
-	logger.V(logutil.TRACE).Info("PrepareRequestData completed",
+	logger.V(logging.TRACE).Info("PrepareRequestData completed",
 		"blockKeys", len(blockKeys), "scores", scores)
 
 	return nil
@@ -421,7 +420,7 @@ func (s *Scorer) Score(ctx context.Context, cycleState *scheduling.CycleState, r
 	defer span.End()
 
 	logger := log.FromContext(ctx).WithName(s.typedName.String())
-	debugLogger := logger.V(logutil.DEBUG)
+	debugLogger := logger.V(logging.DEBUG)
 
 	// Set initial attributes
 	span.SetAttributes(
@@ -496,21 +495,18 @@ func (s *Scorer) Score(ctx context.Context, cycleState *scheduling.CycleState, r
 		return fmt.Sprintf("%s:%s", metadata.Address, metadata.Port), true
 	}
 
-	// Write prefix cache state to cycle state.
-	prefixCacheState := &prefix.SchedulingContextState{
-		PrefixHashes:       []prefix.BlockHash{},
-		PrefixCacheServers: map[prefix.ServerID]int{},
-	}
+	// Write per-endpoint prefix-cache match info as endpoint attributes so downstream
+	// scorers (e.g. nohitlru) can determine whether any cache hits were found.
 	for _, endpoint := range endpoints {
 		key, ok := endpointToKey(endpoint)
-		if !ok {
-			continue
+		matchBlocks := 0
+		if ok {
+			if rawScore, exists := scores[key]; exists && rawScore > 0 {
+				matchBlocks = 1
+			}
 		}
-		if s, exists := scores[key]; exists && s > 0 {
-			prefixCacheState.PrefixCacheServers[prefix.ServerID(endpoint.GetMetadata().NamespacedName)] = int(s)
-		}
+		endpoint.Put(approxprefix.PrefixCacheMatchInfoKey, approxprefix.NewPrefixCacheMatchInfo(matchBlocks, 1, 1))
 	}
-	cycleState.Write(plugin.StateKey(s.typedName.String()), prefixCacheState)
 
 	normalizedScores := indexedScoresToNormalizedScoredPods(endpoints, endpointToKey, scores)
 
@@ -556,7 +552,7 @@ func (s *Scorer) PreRequest(ctx context.Context,
 	state, err := plugin.ReadPluginStateKey[*precisePluginState](
 		s.pluginState, request.RequestId, stateKey)
 	if err != nil {
-		logger.V(logutil.TRACE).Info("No plugin state found for PreRequest, skipping speculative indexing",
+		logger.V(logging.TRACE).Info("No plugin state found for PreRequest, skipping speculative indexing",
 			"requestID", request.RequestId)
 		return
 	}
@@ -610,7 +606,7 @@ func (s *Scorer) PreRequest(ctx context.Context,
 		podEntries: allPodEntries,
 	}, s.speculativeTTL)
 
-	logger.V(logutil.TRACE).Info("Added speculative entries",
+	logger.V(logging.TRACE).Info("Added speculative entries",
 		"requestID", request.RequestId,
 		"pod", speculativePod.PodIdentifier,
 		"blockKeys", len(state.blockKeys),
@@ -636,7 +632,7 @@ func (s *Scorer) computeBlockKeys(ctx context.Context,
 
 	// Regular completions path
 	if request.Body.Completions != nil {
-		return s.kvCacheIndexer.ComputeBlockKeys(ctx, nil, request.Body.Completions.Prompt, request.TargetModel)
+		return s.kvCacheIndexer.ComputeBlockKeys(ctx, nil, request.Body.Completions.Prompt.Raw, request.TargetModel)
 	}
 
 	return nil, nil
@@ -665,7 +661,7 @@ func (s *Scorer) getBlockSizeTokens() int {
 // Otherwise, chat completions and regular completions are tokenized internally.
 func (s *Scorer) getScores(ctx context.Context, cycleState *scheduling.CycleState, request *scheduling.LLMRequest) (map[string]float64, error) {
 	logger := log.FromContext(ctx).WithName(s.typedName.String())
-	traceLogger := logger.V(logutil.TRACE)
+	traceLogger := logger.V(logging.TRACE)
 
 	traceLogger.Info("Getting scores",
 		"isChatCompletions", request.Body != nil && request.Body.ChatCompletions != nil,
@@ -713,7 +709,7 @@ func (s *Scorer) getScores(ctx context.Context, cycleState *scheduling.CycleStat
 
 	// For regular completions, use the prompt directly
 	if request.Body != nil && request.Body.Completions != nil {
-		prompt := request.Body.Completions.Prompt
+		prompt := request.Body.Completions.Prompt.Raw
 		traceLogger.Info("Using completion prompt directly", "promptLength", len(prompt))
 
 		scores, err := s.kvCacheIndexer.GetPodScores(ctx, nil, prompt, request.TargetModel, nil)

@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/plugin"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/scheduling"
 
-	tokenizer "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requestcontrol/dataproducer/tokenizer"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requestcontrol/dataproducer/tokenizer"
 	"github.com/llm-d/llm-d-inference-scheduler/test/utils"
 )
 
@@ -226,7 +226,7 @@ func TestScorer_SkipsTokenizedPromptWhenEmpty(t *testing.T) {
 		RequestId:   "test-skip-empty",
 		TargetModel: "test-model",
 		Body: &scheduling.LLMRequestBody{
-			Completions: &scheduling.CompletionsRequest{Prompt: "hello"},
+			Completions: &scheduling.CompletionsRequest{Prompt: scheduling.Prompt{Raw: "hello"}},
 		},
 	}
 

@@ -3,7 +3,6 @@ package pd_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/go-logr/logr/testr"
 	"github.com/google/go-cmp/cmp"
@@ -14,14 +13,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log" // Import config for thresholds
 	fwkdl "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/datalayer"
 	fwkschd "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/scheduling"
-	dl_prefix "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/attribute/prefix"
+	approxprefix "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/attribute/prefix"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/scheduling/picker"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/scheduling/scorer/prefix"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/scheduling"
 
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/filter/bylabel"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/profilehandler/disagg"
-	loadaware "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/scorer/loadaware"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/scorer/loadaware"
 )
 
 const (
@@ -107,7 +106,7 @@ func TestPDSchedule(t *testing.T) {
 				TargetModel: "any-model",
 				Body: &fwkschd.LLMRequestBody{
 					Completions: &fwkschd.CompletionsRequest{
-						Prompt: "12345678901",
+						Prompt: fwkschd.Prompt{Raw: "12345678901"},
 					},
 				},
 			},
@@ -121,7 +120,7 @@ func TestPDSchedule(t *testing.T) {
 				TargetModel: "critical",
 				Body: &fwkschd.LLMRequestBody{
 					Completions: &fwkschd.CompletionsRequest{
-						Prompt: "12345678901",
+						Prompt: fwkschd.Prompt{Raw: "12345678901"},
 					},
 				},
 			},
@@ -136,7 +135,7 @@ func TestPDSchedule(t *testing.T) {
 				TargetModel: "critical",
 				Body: &fwkschd.LLMRequestBody{
 					Completions: &fwkschd.CompletionsRequest{
-						Prompt: "12345678901",
+						Prompt: fwkschd.Prompt{Raw: "12345678901"},
 					},
 				},
 			},
@@ -151,7 +150,7 @@ func TestPDSchedule(t *testing.T) {
 				TargetModel: "critical",
 				Body: &fwkschd.LLMRequestBody{
 					Completions: &fwkschd.CompletionsRequest{
-						Prompt: "12345678906",
+						Prompt: fwkschd.Prompt{Raw: "12345678906"},
 					},
 				},
 			},
@@ -167,7 +166,7 @@ func TestPDSchedule(t *testing.T) {
 				TargetModel: "critical",
 				Body: &fwkschd.LLMRequestBody{
 					Completions: &fwkschd.CompletionsRequest{
-						Prompt: "12345",
+						Prompt: fwkschd.Prompt{Raw: "12345"},
 					},
 				},
 			},
@@ -184,7 +183,7 @@ func TestPDSchedule(t *testing.T) {
 				TargetModel: "critical",
 				Body: &fwkschd.LLMRequestBody{
 					Completions: &fwkschd.CompletionsRequest{
-						Prompt: "12345678901",
+						Prompt: fwkschd.Prompt{Raw: "12345678901"},
 					},
 				},
 			},
@@ -216,7 +215,7 @@ func TestPDSchedule(t *testing.T) {
 				TargetModel: "critical",
 				Body: &fwkschd.LLMRequestBody{
 					Completions: &fwkschd.CompletionsRequest{
-						Prompt: "1234567890123456789012345678901234567890",
+						Prompt: fwkschd.Prompt{Raw: "1234567890123456789012345678901234567890"},
 					},
 				},
 			},
@@ -235,7 +234,7 @@ func TestPDSchedule(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			//  initialize scheduler with config
-			prefixScorer, err := prefix.New(ctx, prefix.Config{AutoTune: false, BlockSizeTokens: 2, MaxPrefixBlocksToMatch: 256, LRUCapacityPerServer: 31250})
+			prefixScorer, err := prefix.New(ctx)
 			assert.NoError(t, err, "Prefix plugin creation returned unexpected error")
 
 			prefillSchedulerProfile := scheduling.NewSchedulerProfile().
@@ -263,9 +262,9 @@ func TestPDSchedule(t *testing.T) {
 			})
 			scheduler := scheduling.NewSchedulerWithConfig(schedulerConfig)
 
-			inputTokens := len(test.req.Body.Completions.Prompt) / disagg.AverageCharactersPerToken
+			inputTokens := len(test.req.Body.Completions.Prompt.Raw) / disagg.AverageCharactersPerToken
 			for _, pod := range test.input {
-				pod.Put(dl_prefix.PrefixCacheMatchInfoKey, dl_prefix.NewPrefixCacheMatchInfo(0, inputTokens, 1))
+				pod.Put(approxprefix.PrefixCacheMatchInfoKey, approxprefix.NewPrefixCacheMatchInfo(0, inputTokens, 1))
 			}
 			got, err := scheduler.Schedule(ctx, test.req, test.input)
 
@@ -277,13 +276,9 @@ func TestPDSchedule(t *testing.T) {
 				t.Errorf("Unexpected output (-want +got): %v", diff)
 			}
 			if test.wantRes2 != nil { // Checking the prefix match in the decode pod.
-				// make sure prefix plugin stores the prefix hit in cache, so we can test it in the following schedule call
-				prefixScorer.PreRequest(ctx, test.req, got)
-				time.Sleep(time.Second)
-
-				// update number of cached tokens "stored" in the first schedule execution
+				// update number of cached tokens for the following schedule call
 				for _, pod := range test.input {
-					pod.Put(dl_prefix.PrefixCacheMatchInfoKey, dl_prefix.NewPrefixCacheMatchInfo(inputTokens, inputTokens, 1))
+					pod.Put(approxprefix.PrefixCacheMatchInfoKey, approxprefix.NewPrefixCacheMatchInfo(inputTokens, inputTokens, 1))
 				}
 
 				got, err = scheduler.Schedule(ctx, test.req, test.input)

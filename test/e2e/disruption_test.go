@@ -14,7 +14,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	testutils "sigs.k8s.io/gateway-api-inference-extension/test/utils"
+
+	testutils "github.com/llm-d/llm-d-inference-scheduler/test/utils/igw"
 )
 
 const (

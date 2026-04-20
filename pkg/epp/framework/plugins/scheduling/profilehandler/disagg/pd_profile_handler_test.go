@@ -11,7 +11,7 @@ import (
 	fwkdl "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/datalayer"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/plugin"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/scheduling"
-	dl_prefix "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/attribute/prefix"
+	approxprefix "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/attribute/prefix"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/scheduling/scorer/prefix"
 
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/common"
@@ -217,7 +217,7 @@ func createRequest(prompt string) *scheduling.LLMRequest {
 	return &scheduling.LLMRequest{
 		Body: &scheduling.LLMRequestBody{
 			Completions: &scheduling.CompletionsRequest{
-				Prompt: prompt,
+				Prompt: scheduling.Prompt{Raw: prompt},
 			},
 		},
 	}
@@ -257,16 +257,16 @@ func TestPdProfileHandler_Pick(t *testing.T) {
 		{
 			name:                 "decode not executed yet → run decode",
 			nonCachedTokensLimit: 10,
-			prefixPluginType:     prefix.PrefixCachePluginType,
-			prefixPluginName:     prefix.PrefixCachePluginType,
+			prefixPluginType:     prefix.PrefixCacheScorerPluginType,
+			prefixPluginName:     prefix.PrefixCacheScorerPluginType,
 			profileResults:       map[string]*scheduling.ProfileRunResult{},
 			expectedProfiles:     []string{defaultDecodeProfile},
 		},
 		{
 			name:                 "decode failed (nil result) → run nothing",
 			nonCachedTokensLimit: 10,
-			prefixPluginType:     prefix.PrefixCachePluginType,
-			prefixPluginName:     prefix.PrefixCachePluginType,
+			prefixPluginType:     prefix.PrefixCacheScorerPluginType,
+			prefixPluginName:     prefix.PrefixCacheScorerPluginType,
 			profileResults: map[string]*scheduling.ProfileRunResult{
 				defaultDecodeProfile: nil,
 			},
@@ -275,8 +275,8 @@ func TestPdProfileHandler_Pick(t *testing.T) {
 		{
 			name:                 "all profiles already executed → run nothing",
 			nonCachedTokensLimit: 10,
-			prefixPluginType:     prefix.PrefixCachePluginType,
-			prefixPluginName:     prefix.PrefixCachePluginType,
+			prefixPluginType:     prefix.PrefixCacheScorerPluginType,
+			prefixPluginName:     prefix.PrefixCacheScorerPluginType,
 			profileResults: map[string]*scheduling.ProfileRunResult{
 				defaultDecodeProfile:  newMockProfileRunResult(DefaultTestPodPort, "pod1"),
 				defaultPrefillProfile: newMockProfileRunResult(DefaultTestPodPort, "pod2"),
@@ -289,8 +289,8 @@ func TestPdProfileHandler_Pick(t *testing.T) {
 			// In this case: prompt length is 35 chars (8 tokens), cached length is 2 tokens -> disaggregated prefill should trigger
 			nonCachedTokensLimit: 4,
 			cachedTokens:         2,
-			prefixPluginType:     prefix.PrefixCachePluginType,
-			prefixPluginName:     prefix.PrefixCachePluginType,
+			prefixPluginType:     prefix.PrefixCacheScorerPluginType,
+			prefixPluginName:     prefix.PrefixCacheScorerPluginType,
 			profileResults: map[string]*scheduling.ProfileRunResult{
 				defaultDecodeProfile: newMockProfileRunResult(DefaultTestPodPort, "pod1"),
 			},
@@ -302,8 +302,8 @@ func TestPdProfileHandler_Pick(t *testing.T) {
 			// In this case: prompt length is 35 chars (8 tokens), cached length is 5 tokens -> skip prefill
 			nonCachedTokensLimit: 4,
 			cachedTokens:         5,
-			prefixPluginType:     prefix.PrefixCachePluginType,
-			prefixPluginName:     prefix.PrefixCachePluginType,
+			prefixPluginType:     prefix.PrefixCacheScorerPluginType,
+			prefixPluginName:     prefix.PrefixCacheScorerPluginType,
 			profileResults: map[string]*scheduling.ProfileRunResult{
 				defaultDecodeProfile: newMockProfileRunResult(DefaultTestPodPort, "pod1"),
 			},
@@ -327,13 +327,13 @@ func TestPdProfileHandler_Pick(t *testing.T) {
 			assert.NoError(t, err)
 
 			// set prefix to the given cached tokens number for pod "pod1" in decode profile results
-			inputTokens := len(request.Body.Completions.Prompt) / AverageCharactersPerToken
+			inputTokens := len(request.Body.Completions.Prompt.Raw) / AverageCharactersPerToken
 
 			for profileName, profileRes := range tt.profileResults {
 				if profileName == defaultDecodeProfile && profileRes != nil {
 					for _, pod := range profileRes.TargetEndpoints {
-						pod.Put(dl_prefix.PrefixCacheMatchInfoKey,
-							dl_prefix.NewPrefixCacheMatchInfo(tt.cachedTokens, inputTokens, 1))
+						pod.Put(approxprefix.PrefixCacheMatchInfoKey,
+							approxprefix.NewPrefixCacheMatchInfo(tt.cachedTokens, inputTokens, 1))
 					}
 				}
 			}
@@ -377,7 +377,7 @@ func TestPdProfileHandler_PickSeries(t *testing.T) {
 				expectedProfiles: []string{defaultPrefillProfile},
 			}, {
 				request:          request,
-				cachedTokens:     len(request.Body.Completions.Prompt) / AverageCharactersPerToken,
+				cachedTokens:     len(request.Body.Completions.Prompt.Raw) / AverageCharactersPerToken,
 				expectedProfiles: []string{},
 			}},
 		}, {
@@ -391,7 +391,7 @@ func TestPdProfileHandler_PickSeries(t *testing.T) {
 				expectedProfiles: []string{defaultPrefillProfile},
 			}, {
 				request:          longerRequest,
-				cachedTokens:     len(request.Body.Completions.Prompt) / AverageCharactersPerToken,
+				cachedTokens:     len(request.Body.Completions.Prompt.Raw) / AverageCharactersPerToken,
 				expectedProfiles: []string{},
 			}},
 		}, {
@@ -405,7 +405,7 @@ func TestPdProfileHandler_PickSeries(t *testing.T) {
 				expectedProfiles: []string{defaultPrefillProfile},
 			}, {
 				request:          longRequest,
-				cachedTokens:     len(request.Body.Completions.Prompt) / AverageCharactersPerToken,
+				cachedTokens:     len(request.Body.Completions.Prompt.Raw) / AverageCharactersPerToken,
 				expectedProfiles: []string{defaultPrefillProfile},
 			}},
 		},
@@ -419,8 +419,8 @@ func TestPdProfileHandler_PickSeries(t *testing.T) {
 			handler, err := NewPdProfileHandler(
 				defaultPrefillProfile,
 				defaultDecodeProfile,
-				prefix.PrefixCachePluginType,
-				prefix.PrefixCachePluginType,
+				prefix.PrefixCacheScorerPluginType,
+				prefix.PrefixCacheScorerPluginType,
 				0,
 				deciderPlugin,
 			)
@@ -431,13 +431,13 @@ func TestPdProfileHandler_PickSeries(t *testing.T) {
 				cs := &scheduling.CycleState{}
 
 				// set prefix to the given cached tokens number for pod "pod1" in decode profile results
-				inputTokens := len(innerTest.request.Body.Completions.Prompt) / AverageCharactersPerToken
+				inputTokens := len(innerTest.request.Body.Completions.Prompt.Raw) / AverageCharactersPerToken
 
 				for profileName, profileRes := range profileResults {
 					if profileName == defaultDecodeProfile && profileRes != nil {
 						for _, endpoint := range profileRes.TargetEndpoints {
-							endpoint.Put(dl_prefix.PrefixCacheMatchInfoKey,
-								dl_prefix.NewPrefixCacheMatchInfo(innerTest.cachedTokens, inputTokens, 1))
+							endpoint.Put(approxprefix.PrefixCacheMatchInfoKey,
+								approxprefix.NewPrefixCacheMatchInfo(innerTest.cachedTokens, inputTokens, 1))
 						}
 					}
 				}
@@ -519,8 +519,8 @@ func TestPdProfileHandler_ProcessResults(t *testing.T) {
 			handler, err := NewPdProfileHandler(
 				defaultPrefillProfile,
 				defaultDecodeProfile,
-				prefix.PrefixCachePluginType,
-				prefix.PrefixCachePluginType,
+				prefix.PrefixCacheScorerPluginType,
+				prefix.PrefixCacheScorerPluginType,
 				tt.primaryPort,
 				deciderPlugin,
 			)
