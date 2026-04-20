@@ -1,5 +1,6 @@
-# Build Stage: using Go 1.24 image
-FROM registry.access.redhat.com/ubi9/go-toolset:1.24 AS builder
+# Build Stage: using Go 1.25 image
+# Pinned to 1.25.8 to ensure the fix for CVE-2025-61729 (GO-2025-4155) is included (requires >= 1.25.5)
+FROM registry.redhat.io/ubi9/go-toolset:1.25.8@sha256:1e1c89558f8bf86db3d88e5d5de0b6bd396ef948749a2c5d6a752ea46f35d4db AS builder
 ARG TARGETOS
 ARG TARGETARCH
 USER root 
