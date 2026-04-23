@@ -22,11 +22,11 @@ import (
 
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	backendmetrics "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/backend/metrics"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/datastore"
-	fwkdl "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/datalayer"
-	fwkplugin "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/plugin"
-	runserver "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/server"
+	backendmetrics "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/backend/metrics"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/datastore"
+	fwkdl "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
+	fwkplugin "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/plugin"
+	runserver "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/server"
 )
 
 // NewTestRunnerSetup creates a setup runner dedicated for integration tests. When mockDataSource is
