@@ -10,7 +10,7 @@ FROM --platform=${BUILDPLATFORM} quay.io/projectquay/golang:1.25 AS go-builder
 
 ARG TARGETOS
 ARG TARGETARCH
-ARG COMMIT_SHA
+ARG COMMIT_SHA=unknown
 ARG BUILD_REF
 ARG LDFLAGS="-s -w"
 
