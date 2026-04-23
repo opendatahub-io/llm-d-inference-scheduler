@@ -1,6 +1,6 @@
 # Round Robin Fairness Policy
 
-The Round Robin fairness policy selects a queue from a priority band using a simple round-robin strategy. It cycles through active flows one by one, guaranteeing that no single flow can starve others, regardless of its volume, directly addressing the [Noisy Neighbor problem](../../../../../../../site-src/guides/flow-control.md#why-flow-control-the-llm-queuing-problem) described in the user guide.
+The Round Robin fairness policy selects a queue from a priority band using a simple round-robin strategy. It cycles through active flows one by one, guaranteeing that no single flow can starve others, regardless of its volume, directly addressing the [Noisy Neighbor problem](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/v1.5.0/site-src/guides/flow-control.md#why-flow-control-the-llm-queuing-problem) described in the user guide.
 
 It is registered as type `round-robin-fairness-policy` and runs as a fairness policy.
 
@@ -37,4 +37,4 @@ fairnessPolicyRef: round-robin-fairness-policy
 ## Related Documentation
 
 *   [Fairness Overview](../README.md)
-*   [Flow Control User Guide](../../../../../../../site-src/guides/flow-control.md)
+*   [Flow Control User Guide](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/v1.5.0/site-src/guides/flow-control.md)

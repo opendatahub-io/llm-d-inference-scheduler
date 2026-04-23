@@ -47,4 +47,4 @@ orderingPolicyRef: fcfs-ordering-policy
 ## Related Documentation
 
 *   [Ordering Overview](../README.md)
-*   [Flow Control User Guide](../../../../../../../site-src/guides/flow-control.md)
+*   [Flow Control User Guide](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/v1.5.0/site-src/guides/flow-control.md)
