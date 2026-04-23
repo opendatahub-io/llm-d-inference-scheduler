@@ -24,8 +24,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
-
 	v1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/datalayer"
 	fwkdl "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
 	eppmetrics "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metrics"

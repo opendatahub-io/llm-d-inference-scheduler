@@ -30,11 +30,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	v1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	"sigs.k8s.io/gateway-api-inference-extension/apix/v1alpha2"
+
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/backend/metrics"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/datastore"
 	pooltuil "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/util/pool"

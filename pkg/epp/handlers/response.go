@@ -23,9 +23,9 @@ import (
 	extProcPb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
 
 	envoy "github.com/llm-d/llm-d-inference-scheduler/pkg/common/envoy"
+	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metrics"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/util/request"
 )

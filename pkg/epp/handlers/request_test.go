@@ -24,6 +24,7 @@ import (
 	extProcPb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metadata"
 )
 

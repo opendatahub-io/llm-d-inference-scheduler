@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/common"
 )
 

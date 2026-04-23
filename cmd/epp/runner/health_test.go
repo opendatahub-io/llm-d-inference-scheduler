@@ -24,8 +24,8 @@ import (
 	extProcPb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/go-logr/logr/testr"
 	healthPb "google.golang.org/grpc/health/grpc_health_v1"
-
 	v1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/datalayer"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/datastore"
 )

@@ -22,6 +22,7 @@ import (
 	"context"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
 	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/scheduling"
 )
@@ -39,7 +40,7 @@ func (p *Plugin) Category() scheduling.ScorerCategory {
 // Score implements scheduling.Scorer. It tokenizes the request prompt, writes
 // the result to CycleState under the TokenizedPromptStateKey constant, and
 // returns zero scores for all endpoints since this scorer only produces data.
-func (p *Plugin) Score(ctx context.Context, cycleState *scheduling.CycleState, request *scheduling.LLMRequest, pods []scheduling.Endpoint) map[scheduling.Endpoint]float64 {
+func (p *Plugin) Score(ctx context.Context, cycleState *scheduling.CycleState, request *scheduling.InferenceRequest, pods []scheduling.Endpoint) map[scheduling.Endpoint]float64 {
 	logger := log.FromContext(ctx).WithName(p.typedName.String())
 	traceLogger := logger.V(logutil.TRACE)
 

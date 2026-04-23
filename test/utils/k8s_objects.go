@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+
 	gaieutils "github.com/llm-d/llm-d-inference-scheduler/test/utils/igw"
 )
 

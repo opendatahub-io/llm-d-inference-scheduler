@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	v1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+
 	fwkplugin "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/plugin"
 	fwkrh "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/requesthandling"
 )
@@ -187,7 +188,7 @@ func determineAPITypeFromPath(path string) string {
 	return completionsAPI
 }
 
-// extractRequestBody extracts the LLMRequestBody from the given request body map using path-based detection.
+// extractRequestBody extracts the InferenceRequestBody from the given request body map using path-based detection.
 func extractRequestBody(rawBody []byte, headers map[string]string) (*fwkrh.InferenceRequestBody, error) {
 	// Determine API type from request path
 	path := getRequestPath(headers)

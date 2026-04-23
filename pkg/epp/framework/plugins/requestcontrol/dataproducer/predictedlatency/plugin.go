@@ -29,9 +29,9 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	"k8s.io/apimachinery/pkg/types"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	latencypredictor "sigs.k8s.io/gateway-api-inference-extension/sidecars/latencypredictorasync"
 
 	errcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/error"
 	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
@@ -39,7 +39,6 @@ import (
 	fwkdl "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/plugin"
 	framework "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/scheduling"
-	latencypredictor "sigs.k8s.io/gateway-api-inference-extension/sidecars/latencypredictorasync"
 )
 
 const (

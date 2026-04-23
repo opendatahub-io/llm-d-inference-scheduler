@@ -7,6 +7,7 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/plugin"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/requestcontrol"
@@ -255,7 +256,7 @@ func (s *NoHitLRU) scoreColdRequestByLRU(endpoints []scheduling.Endpoint) map[sc
 // - LRU ordering is with respect to when a endpoint last received a cold request.
 // - Least recently used (or never used) endpoints get highest score (1.0)
 // - Most recently used endpoints get lowest score (approaching 0.0)
-func (s *NoHitLRU) Score(ctx context.Context, cycleState *scheduling.CycleState, request *scheduling.LLMRequest, endpoints []scheduling.Endpoint) map[scheduling.Endpoint]float64 {
+func (s *NoHitLRU) Score(ctx context.Context, cycleState *scheduling.CycleState, request *scheduling.InferenceRequest, endpoints []scheduling.Endpoint) map[scheduling.Endpoint]float64 {
 	logger := log.FromContext(ctx).V(logging.DEBUG)
 
 	isCold := s.isColdRequest(ctx, endpoints)
@@ -275,7 +276,7 @@ func (s *NoHitLRU) Score(ctx context.Context, cycleState *scheduling.CycleState,
 
 // PreRequest is called before a request is sent to the target endpoint.
 // For cold requests, it updates the LRU cache to track which endpoints have been used recently.
-func (s *NoHitLRU) PreRequest(ctx context.Context, request *scheduling.LLMRequest, schedulingResult *scheduling.SchedulingResult) {
+func (s *NoHitLRU) PreRequest(ctx context.Context, request *scheduling.InferenceRequest, schedulingResult *scheduling.SchedulingResult) {
 	logger := log.FromContext(ctx).V(logging.DEBUG)
 
 	if schedulingResult == nil || len(schedulingResult.ProfileResults) == 0 {
@@ -306,7 +307,7 @@ func (s *NoHitLRU) PreRequest(ctx context.Context, request *scheduling.LLMReques
 	}
 }
 
-func (s *NoHitLRU) moveTargetPodToFront(ctx context.Context, request *scheduling.LLMRequest, targetProfile *scheduling.ProfileRunResult, profileName string) {
+func (s *NoHitLRU) moveTargetPodToFront(ctx context.Context, request *scheduling.InferenceRequest, targetProfile *scheduling.ProfileRunResult, profileName string) {
 	logger := log.FromContext(ctx).V(logging.DEBUG)
 
 	targetPod := targetProfile.TargetEndpoints[0]

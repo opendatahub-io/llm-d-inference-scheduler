@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/scheduling"
 )
 

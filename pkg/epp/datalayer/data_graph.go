@@ -23,10 +23,9 @@ import (
 	"slices"
 
 	fwkfc "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/flowcontrol"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/plugin"
 	fwkrq "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/requestcontrol"
 	fwksch "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/scheduling"
-
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/plugin"
 )
 
 // ValidateAndOrderDataDependencies validates that the data dependencies among the given plugins are acyclic

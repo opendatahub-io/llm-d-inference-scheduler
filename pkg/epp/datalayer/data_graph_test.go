@@ -26,6 +26,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	k8stypes "k8s.io/apimachinery/pkg/types"
+
 	fwkdl "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
 	fwkfcmocks "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/flowcontrol/mocks"
 	fwkplugin "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/plugin"
@@ -113,7 +114,7 @@ func TestValidatePluginExecutionOrder(t *testing.T) {
 	// Scheduling plugin.
 	consumerSchedulingPlugin := MockSchedulingPlugin{consumes: map[string]any{"keyA": nil}}
 	if _, ok := any(pluginA).(fwkrc.DataProducer); !ok {
-		t.Fatalf("pluginA should implement PrepareDataPlugin")
+		t.Fatalf("pluginA should implement DataProducer")
 	}
 
 	testCases := []struct {

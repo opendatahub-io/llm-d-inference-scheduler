@@ -26,8 +26,8 @@ import (
 	"google.golang.org/grpc/codes"
 	healthPb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
-
 	v1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+
 	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/datastore"
 )

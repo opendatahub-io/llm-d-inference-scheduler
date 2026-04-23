@@ -36,7 +36,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/clock"
 	testclock "k8s.io/utils/clock/testing"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/flowcontrol/usagelimits"
 
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/flowcontrol/contracts"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/flowcontrol/contracts/mocks"
@@ -45,6 +44,7 @@ import (
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/flowcontrol"
 	frameworkmocks "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/flowcontrol/mocks"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/flowcontrol/usagelimits"
 )
 
 // --- Test Harness & Fixtures ---

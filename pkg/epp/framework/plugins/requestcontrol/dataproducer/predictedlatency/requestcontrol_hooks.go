@@ -24,6 +24,7 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	latencypredictor "sigs.k8s.io/gateway-api-inference-extension/sidecars/latencypredictorasync"
 
 	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
 	reqcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/request"
@@ -31,7 +32,6 @@ import (
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/requestcontrol"
 	schedulingtypes "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/scheduling"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metrics"
-	latencypredictor "sigs.k8s.io/gateway-api-inference-extension/sidecars/latencypredictorasync"
 )
 
 var _ requestcontrol.PreRequest = &PredictedLatency{}

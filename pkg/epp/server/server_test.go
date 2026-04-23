@@ -26,8 +26,8 @@ import (
 	pb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"sigs.k8s.io/gateway-api-inference-extension/apix/v1alpha2"
+
 	fwkdl "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
 	fwkrh "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/requesthandling"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/scheduling"
@@ -35,7 +35,7 @@ import (
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/handlers"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metadata"
 	testutil "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/util/testing"
-	"github.com/llm-d/llm-d-inference-scheduler/test/utils/igw"
+	utils "github.com/llm-d/llm-d-inference-scheduler/test/utils/igw"
 )
 
 const (

@@ -19,7 +19,6 @@ package testing
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	v1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	"sigs.k8s.io/gateway-api-inference-extension/apix/v1alpha2"
 )
@@ -84,7 +83,7 @@ func (p *PodWrapper) Labels(labels map[string]string) *PodWrapper {
 	return p
 }
 
-// SetReadyCondition sets a PodReay=true condition.
+// SetReadyCondition sets a PodReady=true condition.
 func (p *PodWrapper) ReadyCondition() *PodWrapper {
 	p.Status.Conditions = []corev1.PodCondition{{
 		Type:   corev1.PodReady,
