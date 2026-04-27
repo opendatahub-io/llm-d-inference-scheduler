@@ -17,6 +17,7 @@ limitations under the License.
 package proxy
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,9 +26,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/common"
 	. "github.com/onsi/ginkgo/v2" // nolint:revive
 	. "github.com/onsi/gomega"    // nolint:revive
+
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/common/routing"
 )
 
 var _ = Describe("SGLang Connector", func() {
@@ -63,17 +65,17 @@ var _ = Describe("SGLang Connector", func() {
 				"max_tokens": 50
 			}`
 
-		req, err := http.NewRequest(http.MethodPost, proxyBaseAddr+ChatCompletionsPath, strings.NewReader(body))
+		req, err := http.NewRequest(http.MethodPost, proxyBaseAddr+ChatCompletionsPath, bytes.NewReader([]byte(body)))
 		Expect(err).ToNot(HaveOccurred())
 
 		prefillHostPort := testInfo.prefillBackend.URL[len("http://"):]
-		req.Header.Add(common.PrefillEndpointHeader, prefillHostPort)
+		req.Header.Add(routing.PrefillEndpointHeader, prefillHostPort)
 
 		rp, err := http.DefaultClient.Do(req)
 		Expect(err).ToNot(HaveOccurred())
 
 		if rp.StatusCode != 200 {
-			bp, _ := io.ReadAll(rp.Body) //nolint:all
+			bp, _ := io.ReadAll(rp.Body) //nolint:errcheck
 			Fail(string(bp))
 		}
 
@@ -154,11 +156,11 @@ var _ = Describe("SGLang Connector", func() {
 		proxyBaseAddr := "http://" + testInfo.proxy.addr.String()
 
 		body := `{"model": "Qwen", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 50}`
-		req, err := http.NewRequest(http.MethodPost, proxyBaseAddr+ChatCompletionsPath, strings.NewReader(body))
+		req, err := http.NewRequest(http.MethodPost, proxyBaseAddr+ChatCompletionsPath, bytes.NewReader([]byte(body)))
 		Expect(err).ToNot(HaveOccurred())
 
 		prefillHostPort := testInfo.prefillBackend.URL[len("http://"):]
-		req.Header.Add(common.PrefillEndpointHeader, prefillHostPort)
+		req.Header.Add(routing.PrefillEndpointHeader, prefillHostPort)
 
 		// Submit request. This will complete as soon as fastDecode completes.
 		rp, err := http.DefaultClient.Do(req)
