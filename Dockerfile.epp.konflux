@@ -1,0 +1,58 @@
+# Go build stage
+FROM registry.access.redhat.com/ubi9/go-toolset:1.25.8@sha256:8c5aeac74b4b60dc2e5e44f6b639186b7ec2fec8f0eb9a36d4a32dcf8e255f52 AS go-builder
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG COMMIT_SHA=unknown
+ARG BUILD_REF
+ARG LDFLAGS="-s -w"
+
+USER root
+
+WORKDIR /workspace
+
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
+
+# Download dependencies - this layer is cached as long as go.mod/go.sum are unchanged
+RUN go mod download
+
+# Copy the go source
+COPY cmd/ cmd/
+COPY pkg/ pkg/
+COPY internal/ internal/
+COPY pkg/      pkg/
+COPY version/  version/
+
+RUN go mod download
+
+# Build EPP
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+       -ldflags="${LDFLAGS} -X github.com/llm-d/llm-d-inference-scheduler/version.CommitSHA=${COMMIT_SHA} -X github.com/llm-d/llm-d-inference-scheduler/version.BuildRef=${BUILD_REF}" \
+       -o bin/epp cmd/epp/main.go
+
+# Runtime stage
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7@sha256:d91be7cea9f03a757d69ad7fcdfcd7849dba820110e7980d5e2a1f46ed06ea3b
+
+WORKDIR /
+
+COPY --from=go-builder /workspace/bin/epp /app/epp
+
+USER 65532:65532
+
+# expose gRPC, health and metrics ports
+EXPOSE 9002
+EXPOSE 9003
+EXPOSE 9090
+# expose port for KV-Events ZMQ SUB socket
+EXPOSE 5557
+
+ENTRYPOINT ["/app/epp"]
+
+LABEL com.redhat.component="odh-llm-d-inference-scheduler" \
+      name="odh-llm-d-inference-scheduler" \
+      description="odh-llm-d-inference-scheduler" \
+      summary="odh-llm-d-inference-scheduler" \
+      io.k8s.display-name="odh-llm-d-inference-scheduler" \
+      io.k8s.description="odh-llm-d-inference-scheduler"

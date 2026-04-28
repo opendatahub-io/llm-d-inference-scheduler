@@ -22,17 +22,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/telemetry"
 )
 
 var (
@@ -221,7 +222,7 @@ func (s *Server) parseSGLangRequest(r *http.Request) (map[string]interface{}, er
 }
 
 func (s *Server) generateSGLangRoomID() int64 {
-	return time.Now().UnixNano() + int64(rand.Intn(1000))
+	return time.Now().UnixNano() + int64(rand.IntN(1000))
 }
 
 func (s *Server) getBootstrapHost(prefillHostPort string) string {

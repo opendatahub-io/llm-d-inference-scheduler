@@ -26,7 +26,7 @@ SIDECAR_TAG ?= dev
 SIDECAR_IMAGE_TAG_BASE ?= $(IMAGE_REGISTRY)/$(SIDECAR_IMAGE_NAME)
 export SIDECAR_IMAGE ?= $(SIDECAR_IMAGE_TAG_BASE):$(SIDECAR_TAG)
 
-VLLM_SIMULATOR_TAG ?= v0.8.1
+VLLM_SIMULATOR_TAG ?= v0.8.2
 VLLM_SIMULATOR_TAG_BASE ?= $(IMAGE_REGISTRY)/$(VLLM_SIMULATOR_IMAGE_NAME)
 export VLLM_SIMULATOR_IMAGE ?= $(VLLM_SIMULATOR_TAG_BASE):$(VLLM_SIMULATOR_TAG)
 
@@ -45,7 +45,9 @@ CONTAINER_RUNTIME := $(shell { command -v docker >/dev/null 2>&1 && echo docker;
 export CONTAINER_RUNTIME
 
 GIT_COMMIT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null)
-BUILD_REF ?= $(shell git describe --abbrev=0 2>/dev/null)
+# Match only root-level release tags (v[0-9]*) so submodule tags don't leak into image versions.
+ROOT_RELEASE_TAG_MATCH ?= v[0-9]*
+BUILD_REF ?= $(shell git describe --tags --match '$(ROOT_RELEASE_TAG_MATCH)' --abbrev=0 2>/dev/null)
 
 # Named volumes for Go module and build caches, persisted across container runs and image rebuilds.
 GO_MOD_CACHE_VOL ?= llm-d-gomodcache
@@ -70,9 +72,13 @@ BUILDER_RUN_FLAGS = --rm $(BUILDER_USER_FLAGS) \
 	-v $(GO_MOD_CACHE_VOL):/go/pkg/mod \
 	-v $(GO_BUILD_CACHE_VOL):/go/cache
 
+# Respect host KUBECONFIG if set; fall back to ~/.kube/config.
+# Note: if KUBECONFIG is a colon-separated list, only the first file is mounted.
+HOST_KUBECONFIG ?= $(or $(KUBECONFIG),$(HOME)/.kube/config)
+
 # Flags for targets that need host network and kubeconfig (integration tests, benchmarks).
 BUILDER_CLUSTER_FLAGS = --network=host \
-	-v $${HOME}/.kube:/.kube:ro \
+	-v $(HOST_KUBECONFIG):/.kube/config:ro \
 	-e KUBECONFIG=/.kube/config
 
 # Mount the container runtime socket and set CONTAINER_HOST so podman --remote
@@ -98,14 +104,28 @@ BUILDER_SOCK_FLAGS = --group-add $(DOCKER_SOCK_GID) \
 	-e CONTAINER_RUNTIME=docker
 endif
 
-# Image env vars to forward into containers (e.g. e2e tests).
-# Add new images here so they are automatically passed through.
-IMAGE_ENV_VARS = EPP_IMAGE VLLM_SIMULATOR_IMAGE SIDECAR_IMAGE UDS_TOKENIZER_IMAGE
-BUILDER_IMAGE_ENV_FLAGS = $(foreach v,$(IMAGE_ENV_VARS),-e $(v)=$($(v)))
+# Env vars forwarded into the e2e test container.
+# Add new image vars here so they are automatically passed through.
+# Should we pass ALL env vars here?
+E2E_ENV_VARS = EPP_IMAGE VLLM_SIMULATOR_IMAGE SIDECAR_IMAGE UDS_TOKENIZER_IMAGE \
+               E2E_KEEP_CLUSTER_ON_FAILURE E2E_PORT E2E_METRICS_PORT K8S_CONTEXT READY_TIMEOUT
+BUILDER_E2E_ENV_FLAGS = $(foreach v,$(E2E_ENV_VARS),$(if $($(v)),-e $(v)=$($(v))))
+ifneq ($(filter command line environment,$(origin NAMESPACE)),)
+BUILDER_E2E_ENV_FLAGS += -e NAMESPACE=$(NAMESPACE)
+endif
+
+# When K8S_CONTEXT is set, mount the host kubeconfig so the e2e suite can call
+# config.GetConfigWithContext(K8S_CONTEXT) against an existing cluster instead of
+# creating a new kind cluster.
+ifdef K8S_CONTEXT
+BUILDER_E2E_KUBECONFIG_FLAGS = -v $(HOST_KUBECONFIG):/.kube/config:ro -e KUBECONFIG=/.kube/config
+else
+BUILDER_E2E_KUBECONFIG_FLAGS =
+endif
 
 # E2e tests create their own kind cluster, need host network (for NodePort access)
 # and the container socket (for kind), but not the host kubeconfig.
-BUILDER_E2E_FLAGS = --network=host $(BUILDER_SOCK_FLAGS) $(BUILDER_IMAGE_ENV_FLAGS)
+BUILDER_E2E_FLAGS = --network=host $(BUILDER_SOCK_FLAGS) $(BUILDER_E2E_ENV_FLAGS) $(BUILDER_E2E_KUBECONFIG_FLAGS)
 
 # Builder container invocations. Always use sh -c so commands with shell expansions
 # (pipes, $(), etc.) run inside the container, not on the host.
@@ -116,6 +136,11 @@ BUILDER_RUN_CLUSTER = $(CONTAINER_RUNTIME) run $(BUILDER_RUN_FLAGS) $(BUILDER_CL
 # Default strips debug symbols for smaller production images.
 # Override locally to build a debuggable image: LDFLAGS="" make image-build-epp
 LDFLAGS ?= -s -w
+
+# Optional: override the runtime base image used in container builds.
+# When set, passed as --build-arg BASE_IMAGE=<value> to the container build.
+# Example: BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-micro:9.7 make image-build-epp
+BASE_IMAGE ?=
 
 # test packages
 epp_TEST_PACKAGES = $$(go list ./... | grep -v /test/ | grep -v ./pkg/sidecar/ | tr '\n' ' ')
@@ -188,7 +213,7 @@ format: image-build-builder ## Format Go source files
 lint: image-build-builder ## Run lint (use LINT_NEW_ONLY=true to only check new code)
 	$(eval LINT_ARGS := --config=./.golangci.yml$(if $(filter true,$(LINT_NEW_ONLY)), --new))
 	@printf "\033[33;1m==== Running linting ====\033[0m\n"
-	$(BUILDER_RUN) 'golangci-lint run $(LINT_ARGS) && typos'
+	$(BUILDER_RUN) 'GOFLAGS=-buildvcs=false golangci-lint run $(LINT_ARGS) && typos'
 
 .PHONY: test
 test: test-unit test-e2e ## Run all tests (unit and e2e)
@@ -247,6 +272,7 @@ post-deploy-test: ## Run post deployment tests
 
 COVERAGE_DIR       ?= coverage
 COVERAGE_THRESHOLD ?= 0
+COVERAGE_LABEL     ?= main
 BASE_REF           ?= main
 
 .PHONY: test-coverage
@@ -264,23 +290,31 @@ coverage-report: image-build-builder ## Generate HTML coverage reports (open cov
 	done'
 
 .PHONY: coverage-compare
-coverage-compare: image-build-builder ## Compare coverage vs baseline (BASELINE_DIR=path or BASE_REF=git-ref, default main)
+coverage-compare: image-build-builder ## Compare coverage vs baseline (BASELINE_DIR=path or BASE_REF=git-ref, default main; COVERAGE_LABEL=label)
 	@if [ -n "$(BASELINE_DIR)" ]; then \
-	    ./scripts/compare-coverage.sh "$(BASELINE_DIR)" "$(COVERAGE_DIR)" "$(COVERAGE_THRESHOLD)"; \
+	    ./scripts/compare-coverage.sh "$(BASELINE_DIR)" "$(COVERAGE_DIR)" "$(COVERAGE_THRESHOLD)" "$(COVERAGE_LABEL)"; \
 	else \
 	    printf "\033[33;1m==== Building Baseline Coverage from $(BASE_REF) ====\033[0m\n"; \
-	    WORKTREE=$$(mktemp -d); \
-	    git worktree add --quiet "$$WORKTREE" "$(BASE_REF)"; \
+	    EXISTING=$$(git worktree list --porcelain \
+	        | awk '/^worktree /{wt=$$2} /^branch refs\/heads\/$(BASE_REF)$$/{print wt}'); \
+	    if [ -n "$$EXISTING" ]; then \
+	        WORKTREE="$$EXISTING"; CLEANUP=0; \
+	    else \
+	        WORKTREE=$$(mktemp -u /tmp/cov-baseline-XXXXXX); \
+	        git worktree add --quiet "$$WORKTREE" "$(BASE_REF)"; \
+	        CLEANUP=1; \
+	    fi; \
+	    mkdir -p "$(COVERAGE_DIR)/baseline"; \
 	    $(CONTAINER_RUNTIME) run $(BUILDER_RUN_FLAGS) \
-	        -v "$$WORKTREE":/baseline:Z -w /baseline \
+	        -v "$$WORKTREE":/baseline:Z \
 	        $(BUILDER_IMAGE) sh -c " \
-	            mkdir -p $(COVERAGE_DIR)/baseline && \
-	            go test -race -coverprofile=$(COVERAGE_DIR)/baseline/epp.out -covermode=atomic \
+	            cd /baseline && \
+	            go test -race -coverprofile=/app/$(COVERAGE_DIR)/baseline/epp.out -covermode=atomic \
 	                $$(go list ./... | grep -v /test/ | grep -v ./pkg/sidecar/ | tr '\n' ' ') && \
-	            go test -race -coverprofile=$(COVERAGE_DIR)/baseline/sidecar.out -covermode=atomic \
+	            go test -race -coverprofile=/app/$(COVERAGE_DIR)/baseline/sidecar.out -covermode=atomic \
 	                ./pkg/sidecar/..."; \
-	    git worktree remove --force "$$WORKTREE"; \
-	    ./scripts/compare-coverage.sh "$(COVERAGE_DIR)/baseline" "$(COVERAGE_DIR)" "$(COVERAGE_THRESHOLD)"; \
+	    [ "$$CLEANUP" -eq 1 ] && git worktree remove --force "$$WORKTREE"; \
+	    ./scripts/compare-coverage.sh "$(COVERAGE_DIR)/baseline" "$(COVERAGE_DIR)" "$(COVERAGE_THRESHOLD)" "$(COVERAGE_LABEL)"; \
 	fi
 
 
@@ -309,20 +343,21 @@ image-build-%: check-container-tool ## Build Container image using $(CONTAINER_R
 		--build-arg COMMIT_SHA=${GIT_COMMIT_SHA} \
 		--build-arg BUILD_REF=${BUILD_REF} \
 		--build-arg LDFLAGS="$(LDFLAGS)" \
+		$(if $(BASE_IMAGE),--build-arg BASE_IMAGE="$(BASE_IMAGE)") \
 		-t $($*_IMAGE) -f Dockerfile.$* .
 
 BUILDER_STAMP = build/.builder.stamp
 
-$(BUILDER_STAMP): Dockerfile.builder | check-container-tool
-	@printf "\033[33;1m==== Building image $(BUILDER_IMAGE) ====\033[0m\n"
-	$(CONTAINER_RUNTIME) build \
-		-f Dockerfile.builder \
-		-t $(BUILDER_IMAGE) .
-	@mkdir -p $(dir $(BUILDER_STAMP))
-	@touch $(BUILDER_STAMP)
-
 .PHONY: image-build-builder
-image-build-builder: $(BUILDER_STAMP)
+image-build-builder: check-container-tool ## Build builder image if missing locally, stamp missing, or Dockerfile.builder newer than stamp
+	@if ! $(CONTAINER_RUNTIME) image inspect $(BUILDER_IMAGE) >/dev/null 2>&1 || \
+	    [ ! -f $(BUILDER_STAMP) ] || \
+	    [ Dockerfile.builder -nt $(BUILDER_STAMP) ]; then \
+		printf "\033[33;1m==== Building image $(BUILDER_IMAGE) ====\033[0m\n"; \
+		$(CONTAINER_RUNTIME) build -f Dockerfile.builder -t $(BUILDER_IMAGE) .; \
+		mkdir -p $(dir $(BUILDER_STAMP)); \
+		touch $(BUILDER_STAMP); \
+	fi
 
 .PHONY: image-push
 image-push: image-push-epp image-push-sidecar ## Push container images to registry using $(CONTAINER_RUNTIME)

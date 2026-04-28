@@ -31,7 +31,8 @@ import (
 	uberzap "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	logutil "sigs.k8s.io/gateway-api-inference-extension/pkg/common/observability/logging"
+
+	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
 )
 
 // Options holds the CLI-facing configuration for the pd-sidecar proxy.
@@ -107,6 +108,7 @@ func NewOptions() *Options {
 			DataParallelSize:        1,
 			SecureServing:           true,
 			EnablePrefillerSampling: enablePrefillerSampling,
+			MaxIdleConnsPerHost:     defaultMaxIdleConnsPerHost,
 			PoolGroup:               DefaultPoolGroup,
 			InferencePoolNamespace:  os.Getenv("INFERENCE_POOL_NAMESPACE"),
 			InferencePoolName:       os.Getenv("INFERENCE_POOL_NAME"),
@@ -160,6 +162,7 @@ func (opts *Options) AddFlags(fs *pflag.FlagSet) {
 	_ = fs.MarkDeprecated("inference-pool-namespace", "use --inference-pool instead")
 	fs.StringVar(&opts.InferencePoolName, "inference-pool-name", opts.InferencePoolName, "Deprecated: use --inference-pool instead. The specific InferencePool name (defaults to INFERENCE_POOL_NAME env var)")
 	_ = fs.MarkDeprecated("inference-pool-name", "use --inference-pool instead")
+	fs.IntVar(&opts.MaxIdleConnsPerHost, "max-idle-conns-per-host", opts.MaxIdleConnsPerHost, "max idle keep-alive connections per host for reverse proxy transports; set to at least the expected concurrency")
 }
 
 // validateStages checks if all stages in the slice are valid according to the supportedStages map
