@@ -50,18 +50,6 @@ inference.networking.k8s.io/igw-mode: inferencepool
 {{- end -}}
 {{- end -}}
 
-
-{{/*
-Create a default fully qualified app name for inferenceGateway.
-*/}}
-{{- define "gateway-api-inference-extension.gateway.fullname" -}}
-  {{- if .Values.experimentalHttpRoute.inferenceGatewayName -}}
-    {{- .Values.experimentalHttpRoute.inferenceGatewayName | trunc 63 | trimSuffix "-" -}}
-  {{- else -}}
-    {{- printf "%s-inference-gateway" .Release.Name| trunc 63 | trimSuffix "-" -}}
-  {{- end -}}
-{{- end -}}
-
 {{/*
 Return the standalone sidecar proxy type.
 */}}

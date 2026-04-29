@@ -9,17 +9,20 @@ inferenceExtension:
   failureMode: "FailOpen"
   env: []
   pluginsConfigFile: "default-plugins.yaml"
+
   # Define additional container ports
   extraContainerPorts: []
-  # Define additional service ports
-  extraServicePorts: []
-#  extraServicePorts:
-#    - name: http
-#      port: 8081
-#      protocol: TCP
-#      targetPort: 8081
 
-  # This is the plugins configuration file.
+  # Define additional service ports
+  # Example environment variables:  
+  #  extraServicePorts:
+  #    - name: http
+  #      port: 80
+  #      protocol: TCP
+  #      targetPort: 8081
+  extraServicePorts: []
+
+  # Example defining a custom EPP config file
   # pluginsCustomConfig:
   #   custom-plugins.yaml: |
   #     apiVersion: inference.networking.x-k8s.io/v1alpha1
@@ -37,9 +40,10 @@ inferenceExtension:
   # env:
   #   ENABLE_EXPERIMENTAL_FEATURE: "true"
 
-  flags:
-    # Log verbosity
-    v: 1
+  # Example flags:
+  # flags:
+  #  # Log verbosity
+  #  v: 2
 
   affinity: {}
 
@@ -91,7 +95,7 @@ inferenceExtension:
 
   # Latency Predictor Configuration
   latencyPredictor:
-    # common latencyPredictor setting exists in config/charts/inference-extension/values.yaml
+    # common latencyPredictor setting exists in config/charts/epplib/values.yaml
     enabled: false
 
   # Metrics DataSource Configuration
@@ -142,8 +146,12 @@ provider:
 experimentalHttpRoute:
   enabled: false # a flag to indicate whether to create the httproute as part of the chart or not.
   inferenceGatewayName: inference-gateway
+  inferenceGatewayNamespace: ""
   # HTTPRoute request timeout. Defaults to "300s". Unused when provider.name is gke.
   requestTimeout: "300s"
+  # Example header matches:
+  # headerMatches:
+  #  x-my-custom-route-header: route-name
 
 
 # Optional: Define InferenceObjective(s) for this InferencePool.

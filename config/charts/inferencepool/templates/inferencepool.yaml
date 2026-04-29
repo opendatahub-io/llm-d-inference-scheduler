@@ -8,9 +8,9 @@ metadata:
     {{- include "gateway-api-inference-extension.labels" . | nindent 4 }}
 spec:
   targetPorts:
-    {{- range .Values.inferencePool.targetPorts }}
-      - number: {{ .number }}
-    {{- end }}
+  {{- range .Values.inferencePool.targetPorts }}
+  - number: {{ .number }}
+  {{- end }}
   {{- if eq .Values.inferencePool.modelServerProtocol "grpc" }}
   appProtocol: "kubernetes.io/h2c"
   {{- else if eq .Values.inferencePool.modelServerProtocol "http" }}
