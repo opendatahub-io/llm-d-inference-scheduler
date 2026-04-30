@@ -20,6 +20,7 @@ package epp
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,12 +57,28 @@ const (
 	inferenceObjectiveWithPriority4 = "inference-objective-with-priority-4"
 )
 
+// gaieModulePath is the on-disk path to the gateway-api-inference-extension
+// upstream module in the local mod cache. CRDs and shared testdata fixtures
+// live there because api/v1, apix/v1alpha2 are upstream types and the test
+// manifests depend on those CRD shapes.
+var gaieModulePath string
+
 func TestMain(m *testing.M) {
 	ctrl.SetLogger(logger)
 
+	// Discover the GAIE module path so CRDs and testdata stay version-pinned to
+	// whatever this repo's go.mod resolves to.
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}",
+		"sigs.k8s.io/gateway-api-inference-extension").Output()
+	if err != nil {
+		panic(fmt.Sprintf("failed to locate gateway-api-inference-extension module: %v", err))
+	}
+	gaieModulePath = strings.TrimSpace(string(out))
+	crdPath := filepath.Join(gaieModulePath, "config", "crd", "bases")
+
 	// 1. EnvTest Setup (API Server + Etcd)
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths:     []string{crdPath},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, err := testEnv.Start()
@@ -482,7 +499,7 @@ featureGates:
 
 // loadBaseResources parses the YAML manifest once at startup.
 func loadBaseResources() []*unstructured.Unstructured {
-	path := filepath.Join("..", "..", "testdata", "inferencepool-with-model-hermetic.yaml")
+	path := filepath.Join(gaieModulePath, "test", "testdata", "inferencepool-with-model-hermetic.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		panic(fmt.Sprintf("failed to read manifest %s: %v", path, err))
