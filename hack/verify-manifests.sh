@@ -21,7 +21,9 @@ set -o pipefail
 SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")/..
 GATEWAY_API_VERSION="${GATEWAY_API_VERSION:-v1.3.0}"
 GKE_GATEWAY_API_VERSION="${GKE_GATEWAY_API_VERSION:-v1.4.0}"
+GIE_VERSION="${GIE_VERSION:-v1.4.0}"
 ISTIO_VERSION="${ISTIO_VERSION:-1.26.2}"
+KUBECTL_VALIDATE="${KUBECTL_VALIDATE:-${SCRIPT_ROOT}/bin/kubectl-validate}"
 TEMP_DIR=$(mktemp -d)
 
 cleanup() {
@@ -35,7 +37,15 @@ fetch_crds() {
 }
 
 main() {
-  cp ${SCRIPT_ROOT}/config/crd/bases/* "${TEMP_DIR}/"
+  fetch_gie_crd() {
+    local name="$1"
+    fetch_crds "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/refs/tags/${GIE_VERSION}/config/crd/bases/${name}"
+  }
+
+  fetch_gie_crd "inference.networking.k8s.io_inferencepools.yaml"
+  fetch_gie_crd "inference.networking.x-k8s.io_inferencemodelrewrites.yaml"
+  fetch_gie_crd "inference.networking.x-k8s.io_inferenceobjectives.yaml"
+  fetch_gie_crd "inference.networking.x-k8s.io_inferencepoolimports.yaml"
 
   # Download external CRDs for validation
   fetch_crds "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/tags/${GATEWAY_API_VERSION}/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml"
@@ -49,8 +59,8 @@ main() {
   # source (such as in the verify-all script)
   make kubectl-validate
 
-  ${SCRIPT_ROOT}/bin/kubectl-validate "${TEMP_DIR}"
-  ${SCRIPT_ROOT}/bin/kubectl-validate "${SCRIPT_ROOT}/config/manifests" --local-crds "${TEMP_DIR}"
+  ${KUBECTL_VALIDATE} "${TEMP_DIR}"
+  ${KUBECTL_VALIDATE} "${SCRIPT_ROOT}/config/manifests" --local-crds "${TEMP_DIR}"
 }
 
 main

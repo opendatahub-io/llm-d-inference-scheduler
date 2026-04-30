@@ -1,8 +1,8 @@
 {{/*
 Common labels
 */}}
-{{- define "gateway-api-inference-extension.labels" -}}
-app.kubernetes.io/name: {{ include "gateway-api-inference-extension.name" . }}
+{{- define "llm-d-inference-scheduler.labels" -}}
+app.kubernetes.io/name: {{ include "llm-d-inference-scheduler.name" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -11,7 +11,7 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{/*
 Inference extension name
 */}}
-{{- define "gateway-api-inference-extension.name" -}}
+{{- define "llm-d-inference-scheduler.name" -}}
 {{- $base := .Release.Name | default "default-pool" | lower | trim | trunc 40 -}}
 {{ $base }}-epp
 {{- end -}}
@@ -19,7 +19,7 @@ Inference extension name
 {{/*
 Cluster RBAC unique name
 */}}
-{{- define "gateway-api-inference-extension.cluster-rbac-name" -}}
+{{- define "llm-d-inference-scheduler.cluster-rbac-name" -}}
 {{- $base := .Release.Name | default "default-pool" | lower | trim | trunc 40 }}
 {{- $ns := .Release.Namespace | default "default" | lower | trim | trunc 40 }}
 {{- printf "%s-%s-epp" $base $ns | quote | trunc 84 }}
@@ -28,32 +28,32 @@ Cluster RBAC unique name
 {{/*
 Selector labels
 */}}
-{{- define "gateway-api-inference-extension.selectorLabels" -}}
+{{- define "llm-d-inference-scheduler.selectorLabels" -}}
 {{- /* Check if endpointsServer exists AND if createInferencePool is false */ -}}
 {{- if and .Values.inferenceExtension.endpointsServer (not .Values.inferenceExtension.endpointsServer.createInferencePool) -}}
 {{- /* LOGIC FOR STANDALONE EPP MODE */ -}}
-epp: {{ include "gateway-api-inference-extension.name" . }}
+epp: {{ include "llm-d-inference-scheduler.name" . }}
 {{- else -}}
 {{- /* LOGIC FOR PARENT (INFERENCEPOOL) MODE */ -}}
-inferencepool: {{ include "gateway-api-inference-extension.name" . }}
+inferencepool: {{ include "llm-d-inference-scheduler.name" . }}
 {{- end -}}
 {{- end -}}
 
 {{/*
 Mode labels
 */}}
-{{- define "gateway-api-inference-extension.modeLabels" -}}
+{{- define "llm-d-inference-scheduler.modeLabels" -}}
 {{- if and .Values.inferenceExtension.endpointsServer (not .Values.inferenceExtension.endpointsServer.createInferencePool) -}}
-inference.networking.k8s.io/igw-mode: standalone
+llm-d.ai/igw-mode: standalone
 {{- else -}}
-inference.networking.k8s.io/igw-mode: inferencepool
+llm-d.ai/igw-mode: inferencepool
 {{- end -}}
 {{- end -}}
 
 {{/*
 Return the standalone sidecar proxy type.
 */}}
-{{- define "gateway-api-inference-extension.sidecarProxyType" -}}
+{{- define "llm-d-inference-scheduler.sidecarProxyType" -}}
 {{- $sidecar := .Values.inferenceExtension.sidecar | default dict -}}
 {{- default "envoy" ($sidecar.proxyType | default "envoy") | lower -}}
 {{- end -}}
@@ -62,7 +62,7 @@ Return the standalone sidecar proxy type.
 Normalize a scalar, comma-separated string, or list of ports into a
 comma-separated numeric string.
 */}}
-{{- define "gateway-api-inference-extension.normalizedPortList" -}}
+{{- define "llm-d-inference-scheduler.normalizedPortList" -}}
 {{- $path := .path -}}
 {{- $value := .value -}}
 {{- if empty $value -}}
@@ -97,7 +97,7 @@ Return the standalone proxy listener port exposed by the EPP Service.
 The port is selected by the Service port named "http" so selection is
 deterministic even when additional Service ports are configured.
 */}}
-{{- define "gateway-api-inference-extension.standaloneProxyListenerPort" -}}
+{{- define "llm-d-inference-scheduler.standaloneProxyListenerPort" -}}
 {{- $servicePorts := .Values.inferenceExtension.extraServicePorts | default list -}}
 {{- $found := false -}}
 {{- $listenerPort := "" -}}
@@ -145,34 +145,34 @@ deterministic even when additional Service ports are configured.
 {{/*
 Return the standalone EPP model-server target ports.
 */}}
-{{- define "gateway-api-inference-extension.standaloneEndpointTargetPorts" -}}
-{{- include "gateway-api-inference-extension.normalizedPortList" (dict "path" ".Values.inferenceExtension.endpointsServer.targetPorts" "value" .Values.inferenceExtension.endpointsServer.targetPorts) -}}
+{{- define "llm-d-inference-scheduler.standaloneEndpointTargetPorts" -}}
+{{- include "llm-d-inference-scheduler.normalizedPortList" (dict "path" ".Values.inferenceExtension.endpointsServer.targetPorts" "value" .Values.inferenceExtension.endpointsServer.targetPorts) -}}
 {{- end -}}
 
 {{/*
 Return the agentgateway model Service ports.
 */}}
-{{- define "gateway-api-inference-extension.agentgateway.modelServicePorts" -}}
+{{- define "llm-d-inference-scheduler.agentgateway.modelServicePorts" -}}
 {{- $sidecarValues := .Values.inferenceExtension.sidecar | default dict -}}
 {{- $agentgateway := index $sidecarValues "agentgateway" | default dict -}}
 {{- $service := index $agentgateway "service" | default dict -}}
-{{- include "gateway-api-inference-extension.normalizedPortList" (dict "path" ".Values.inferenceExtension.sidecar.agentgateway.service.ports" "value" (index $service "ports")) -}}
+{{- include "llm-d-inference-scheduler.normalizedPortList" (dict "path" ".Values.inferenceExtension.sidecar.agentgateway.service.ports" "value" (index $service "ports")) -}}
 {{- end -}}
 
 {{/*
 Return the resolved sidecar configuration for the current chart.
 Standalone uses proxy presets merged with explicit sidecar overrides.
 */}}
-{{- define "gateway-api-inference-extension.sidecar" -}}
+{{- define "llm-d-inference-scheduler.sidecar" -}}
 {{- $sidecar := deepCopy (.Values.inferenceExtension.sidecar | default dict) -}}
 {{- $resolved := $sidecar -}}
 {{- if eq .Chart.Name "standalone" -}}
-  {{- $proxyType := include "gateway-api-inference-extension.sidecarProxyType" . -}}
+  {{- $proxyType := include "llm-d-inference-scheduler.sidecarProxyType" . -}}
   {{- $presets := index $sidecar "presets" | default dict -}}
   {{- $preset := deepCopy ((index $presets $proxyType) | default dict) -}}
   {{- $resolved = mergeOverwrite $preset $sidecar -}}
   {{- if eq $proxyType "agentgateway" -}}
-    {{- $listenerPort := include "gateway-api-inference-extension.standaloneProxyListenerPort" . | int -}}
+    {{- $listenerPort := include "llm-d-inference-scheduler.standaloneProxyListenerPort" . | int -}}
     {{- $ports := index $resolved "ports" | default list -}}
     {{- $resolvedPorts := list (dict "containerPort" $listenerPort "name" "http") -}}
     {{- range $index, $port := $ports -}}
@@ -190,12 +190,12 @@ Standalone uses proxy presets merged with explicit sidecar overrides.
 {{/*
 Return the rendered sidecar ConfigMap data.
 */}}
-{{- define "gateway-api-inference-extension.sidecarConfigMapData" -}}
-{{- $sidecar := include "gateway-api-inference-extension.sidecar" . | fromYaml | default dict -}}
+{{- define "llm-d-inference-scheduler.sidecarConfigMapData" -}}
+{{- $sidecar := include "llm-d-inference-scheduler.sidecar" . | fromYaml | default dict -}}
 {{- $configMap := index $sidecar "configMap" | default dict -}}
 {{- $data := deepCopy ((index $configMap "data") | default dict) -}}
-{{- if and (eq .Chart.Name "standalone") (eq (include "gateway-api-inference-extension.sidecarProxyType" .) "agentgateway") -}}
-  {{- $generated := dict "config.yaml" (include "gateway-api-inference-extension.sidecar.agentgatewayConfig" .) -}}
+{{- if and (eq .Chart.Name "standalone") (eq (include "llm-d-inference-scheduler.sidecarProxyType" .) "agentgateway") -}}
+  {{- $generated := dict "config.yaml" (include "llm-d-inference-scheduler.sidecar.agentgatewayConfig" .) -}}
   {{- $data = mergeOverwrite $data $generated -}}
 {{- end -}}
 {{- toYaml $data -}}
@@ -205,7 +205,7 @@ Return the rendered sidecar ConfigMap data.
 Render labels from the standalone endpoint selector for the generated model Service.
 Only equality-based selectors are supported because Service selectors are a map.
 */}}
-{{- define "gateway-api-inference-extension.agentgateway.modelServiceSelectorLabels" -}}
+{{- define "llm-d-inference-scheduler.agentgateway.modelServiceSelectorLabels" -}}
 {{- $selector := .Values.inferenceExtension.endpointsServer.endpointSelector | default "" -}}
 {{- if empty $selector -}}
   {{- fail ".Values.inferenceExtension.endpointsServer.endpointSelector is required when creating an agentgateway model Service" -}}
@@ -228,15 +228,15 @@ Only equality-based selectors are supported because Service selectors are a map.
 {{/*
 Render the default standalone agentgateway sidecar config template.
 */}}
-{{- define "gateway-api-inference-extension.sidecar.agentgatewayConfig" -}}
+{{- define "llm-d-inference-scheduler.sidecar.agentgatewayConfig" -}}
 {{- $sidecarValues := .Values.inferenceExtension.sidecar | default dict -}}
 {{- $agentgateway := index $sidecarValues "agentgateway" | default dict -}}
 {{- $service := index $agentgateway "service" | default dict -}}
 {{- $serviceName := index $service "name" | default "" -}}
 {{- $serviceNamespace := index $service "namespace" | default .Release.Namespace -}}
-{{- $servicePorts := splitList "," (include "gateway-api-inference-extension.agentgateway.modelServicePorts" .) -}}
+{{- $servicePorts := splitList "," (include "llm-d-inference-scheduler.agentgateway.modelServicePorts" .) -}}
 {{- $backendPort := index $servicePorts 0 -}}
-{{- $listenerPort := include "gateway-api-inference-extension.standaloneProxyListenerPort" . | int -}}
+{{- $listenerPort := include "llm-d-inference-scheduler.standaloneProxyListenerPort" . | int -}}
 config:
   statsAddr: "0.0.0.0:15020"
   readinessAddr: "0.0.0.0:15021"

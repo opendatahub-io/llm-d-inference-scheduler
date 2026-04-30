@@ -17,7 +17,7 @@ To install via the latest published chart in staging  (--version v0 indicates la
 $ helm install vllm-qwen3-32b \
   --set inferencePool.modelServers.matchLabels.app=vllm-qwen3-32b \
   --set provider.name=[none|gke|istio] \
-  oci://us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/charts/inferencepool --version v0
+  oci://ghcr.io/llm-d/charts/inferencepool --version v0
 ```
 
 Note that the provider name is needed to deploy provider-specific resources. If no provider is specified, then only the InferencePool object and the EPP are deployed.
@@ -31,7 +31,7 @@ $ helm install vllm-qwen3-32b \
   --set inferencePool.modelServers.matchLabels.app=vllm-qwen3-32b \
   --set inferenceExtension.flags.<FLAG_NAME>=<FLAG_VALUE>
   --set provider.name=[none|gke|istio] \
-  oci://us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/charts/inferencepool --version v0
+  oci://ghcr.io/llm-d/charts/inferencepool --version v0
 ```
 
 Alternatively, you can define flags in the `values.yaml` file:
@@ -118,7 +118,7 @@ $ helm install triton-qwen3-32b \
   --set inferencePool.modelServers.matchLabels.app=triton-qwen3-32b \
   --set inferencePool.modelServerType=triton-tensorrt-llm \
   --set provider.name=[none|gke|istio] \
-  oci://us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/charts/inferencepool --version v0
+  oci://ghcr.io/llm-d/charts/inferencepool --version v0
 ```
 
 ### Install for trtllm-serve (TensorRT-LLM)
@@ -130,7 +130,7 @@ $ helm install trtllm-serve-qwen3-32b \
   --set inferencePool.modelServers.matchLabels.app=trtllm-serve-qwen3-32b \
   --set inferencePool.modelServerType=trtllm-serve \
   --set provider.name=[none|gke|istio] \
-  oci://us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/charts/inferencepool --version v0
+  oci://ghcr.io/llm-d/charts/inferencepool --version v0
 ```
 
 ### Install with Latency-Based Routing
@@ -151,7 +151,7 @@ To enable HA, set `inferenceExtension.replicas` to a number greater than 1.
   --set inferencePool.modelServers.matchLabels.app=vllm-qwen3-32b \
   --set inferenceExtension.replicas=3 \
   --set provider=[none|gke] \
-  oci://us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/charts/inferencepool --version v0
+  oci://ghcr.io/llm-d/charts/inferencepool --version v0
   ```
 
 * Via `values.yaml`:
@@ -222,7 +222,7 @@ The following table list the configurable parameters of the chart.
 | `inferenceExtension.env`                                   | List of environment variables to set in the endpoint picker container as free-form YAML. Defaults to `[]`.                                                                                                                                                                                                                                                                                    |
 | `inferenceExtension.extraContainerPorts`                   | List of additional container ports to expose. Defaults to `[]`.                                                                                                                                                                                                                                                                                                                               |
 | `inferenceExtension.extraServicePorts`                     | List of additional service ports to expose. Defaults to `[]`.                                                                                                                                                                                                                                                                                                                                 |
-| `inferenceExtension.flags`                                 | map of flags which are passed through to endpoint picker. Example flags, enable-pprof, grpc-port etc. Refer [runner.go](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/cmd/epp/runner/runner.go) for complete list.                                                                                                                                             |
+| `inferenceExtension.flags`                                 | map of flags which are passed through to endpoint picker. Example flags, enable-pprof, grpc-port etc. Refer [runner.go](https://github.com/llm-d/llm-d-inference-scheduler/blob/main/cmd/epp/runner/runner.go) for complete list.                                                                                                                                             |
 | `inferenceExtension.affinity`                              | Affinity for the endpoint picker. Defaults to `{}`.                                                                                                                                                                                                                                                                                                                                           |
 | `inferenceExtension.tolerations`                           | Tolerations for the endpoint picker. Defaults to `[]`.                                                                                                                                                                                                                                                                                                                                        |
 | `inferenceExtension.monitoring.interval`                   | Metrics scraping interval for monitoring. Defaults to `10s`.                                                                                                                                                                                                                                                                                                                                  |
@@ -286,4 +286,4 @@ Current only the `parentbased_traceidratio` sampler is supported. You can adjust
 
 ## Notes
 
-This chart will only deploy an InferencePool and its corresponding EndpointPicker extension. Before install the chart, please make sure that the inference extension CRDs are installed in the cluster. For more details, please refer to the [getting started guide](https://gateway-api-inference-extension.sigs.k8s.io/guides/).
+This chart will only deploy an InferencePool and its corresponding EndpointPicker extension. Before install the chart, please make sure that the inference extension CRDs are installed in the cluster. For more details, please refer to the [getting started guide](https://github.com/llm-d/llm-d-inference-scheduler/tree/main/deploy).

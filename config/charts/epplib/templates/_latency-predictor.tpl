@@ -1,7 +1,7 @@
 {{/*
 Latency Predictor Env
 */}}
-{{- define "gateway-api-inference-extension.latencyPredictor.env" -}}
+{{- define "llm-d-inference-scheduler.latencyPredictor.env" -}}
 {{- if .Values.inferenceExtension.latencyPredictor.enabled }}
 - name: PREDICTION_SERVER_URL
   value: "{{- $count := int .Values.inferenceExtension.latencyPredictor.predictionServers.count -}}
@@ -21,7 +21,7 @@ Latency Predictor Env
 {{/*
 Latency Predictor Sidecar Containers
 */}}
-{{- define "gateway-api-inference-extension.latencyPredictor.containers" -}}
+{{- define "llm-d-inference-scheduler.latencyPredictor.containers" -}}
 {{- if .Values.inferenceExtension.latencyPredictor.enabled }}
 # Training Server Sidecar Container
 - name: training-server
@@ -38,7 +38,7 @@ Latency Predictor Sidecar Containers
     {{- toYaml .Values.inferenceExtension.latencyPredictor.trainingServer.resources | nindent 4 }}
   envFrom:
   - configMapRef:
-      name: {{ include "gateway-api-inference-extension.name" . }}-latency-predictor-training
+      name: {{ include "llm-d-inference-scheduler.name" . }}-latency-predictor-training
   env:
   - name: POD_NAME
     valueFrom:
@@ -76,7 +76,7 @@ Latency Predictor Sidecar Containers
     {{- toYaml $.Values.inferenceExtension.latencyPredictor.predictionServers.resources | nindent 4 }}
   envFrom:
   - configMapRef:
-      name: {{ include "gateway-api-inference-extension.name" $ }}-latency-predictor-prediction
+      name: {{ include "llm-d-inference-scheduler.name" $ }}-latency-predictor-prediction
   env:
   - name: PREDICT_PORT
     value: "{{ add $.Values.inferenceExtension.latencyPredictor.predictionServers.startPort $i }}"
@@ -98,7 +98,7 @@ Latency Predictor Sidecar Containers
 {{/*
 Latency Predictor Volumes
 */}}
-{{- define "gateway-api-inference-extension.latencyPredictor.volumes" -}}
+{{- define "llm-d-inference-scheduler.latencyPredictor.volumes" -}}
 {{- if .Values.inferenceExtension.latencyPredictor.enabled }}
 - name: training-server-storage
   emptyDir: 

@@ -6,7 +6,7 @@ metadata:
   name: {{ .name }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "gateway-api-inference-extension.labels" $ | nindent 4 }}
+    {{- include "llm-d-inference-scheduler.labels" $ | nindent 4 }}
 spec:
   priority: {{ .priority }}
   poolRef:

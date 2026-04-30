@@ -25,9 +25,9 @@ CHART_VERSION=${CHART_VERSION:-"v0"}
 AGENTGATEWAY_TAG=${AGENTGATEWAY_TAG:-${EXTRA_TAG}}
 export EXTRA_TAG AGENTGATEWAY_TAG
 
-STAGING_IMAGE_REGISTRY=${STAGING_IMAGE_REGISTRY:-us-central1-docker.pkg.dev/k8s-staging-images}
-IMAGE_REGISTRY=${IMAGE_REGISTRY:-${STAGING_IMAGE_REGISTRY}/gateway-api-inference-extension}
-HELM_CHART_REPO=${HELM_CHART_REPO:-${STAGING_IMAGE_REGISTRY}/gateway-api-inference-extension/charts}
+IMAGE_REGISTRY=${IMAGE_REGISTRY:-ghcr.io/llm-d}
+IMAGE_REPOSITORY=${IMAGE_REPOSITORY:-llm-d-inference-scheduler}
+HELM_CHART_REPO=${HELM_CHART_REPO:-ghcr.io/llm-d/charts}
 CHART=${CHART:-inferencepool}
 
 HELM=${HELM:-./bin/helm}
@@ -37,6 +37,8 @@ readonly semver_regex='^v([0-9]+)(\.[0-9]+){1,2}(-rc.[0-9]+)?$'
 chart_version=${CHART_VERSION}
 if [[ ${EXTRA_TAG} =~ ${semver_regex} ]]
 then
+  ${YQ} -i '.inferenceExtension.image.registry=strenv(IMAGE_REGISTRY)' config/charts/${CHART}/values.yaml
+  ${YQ} -i '.inferenceExtension.image.repository=strenv(IMAGE_REPOSITORY)' config/charts/${CHART}/values.yaml
   ${YQ} -i '.inferenceExtension.image.tag=strenv(EXTRA_TAG)' config/charts/${CHART}/values.yaml
   if [[ ${CHART} == "standalone" ]]; then
     ${YQ} -i \

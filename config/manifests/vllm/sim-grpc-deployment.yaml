@@ -11,7 +11,7 @@ spec:
     metadata:
       labels:
         app: vllm-grpc-qwen3-32b
-        inference.networking.k8s.io/engine-type: vllm
+        llm-d.ai/engine-type: vllm
     spec:
       containers:
       - name: vllm-sim
