@@ -1,9 +1,10 @@
 inferenceExtension:
   replicas: 1
   image:
-    registry: ghcr.io
-    repository: llm-d/llm-d-inference-scheduler
-    tag: dev
+    # TODO: Update this default once llm-d owns and publishes the EPP image.
+    registry: us-central1-docker.pkg.dev/k8s-staging-images
+    repository: gateway-api-inference-extension/epp
+    tag: main
     pullPolicy: Always
   extProcPort: 9002
   extraServicePorts:

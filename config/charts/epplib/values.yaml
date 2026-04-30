@@ -3,9 +3,10 @@ latencyPredictor:
   # Training Server Configuration
   trainingServer:
     image:
-      registry: ghcr.io
-      repository: llm-d/latency-training-server
-      tag: dev
+      # TODO: Update this default once llm-d owns and publishes this image.
+      registry: us-central1-docker.pkg.dev/k8s-staging-images
+      repository: gateway-api-inference-extension/latency-training-server
+      tag: main
       pullPolicy: Always
     port: 8000
     resources:
@@ -44,9 +45,10 @@ latencyPredictor:
     count: 1
     startPort: 8001
     image:
-      registry: ghcr.io
-      repository: llm-d/latency-prediction-server
-      tag: dev
+      # TODO: Update this default once llm-d owns and publishes this image.
+      registry: us-central1-docker.pkg.dev/k8s-staging-images
+      repository: gateway-api-inference-extension/latency-prediction-server
+      tag: main
       pullPolicy: Always
     resources:
       requests:
