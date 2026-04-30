@@ -43,10 +43,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
-	pb "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requesthandling/parsers/vllmgrpc/api/gen"
+	pb "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requesthandling/parsers/vllmgrpc/api/gen"
 
-	reqcommon "sigs.k8s.io/gateway-api-inference-extension/pkg/common/request"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/metadata"
+	reqcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/request"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metadata"
 )
 
 const (

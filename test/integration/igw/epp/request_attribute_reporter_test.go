@@ -24,8 +24,8 @@ import (
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	logutil "sigs.k8s.io/gateway-api-inference-extension/pkg/common/observability/logging"
-	"sigs.k8s.io/gateway-api-inference-extension/test/integration"
+	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
+	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 var reqLogger = zap.New(zap.UseDevMode(true), zap.Level(-1*zapcore.Level(logutil.DEFAULT)))

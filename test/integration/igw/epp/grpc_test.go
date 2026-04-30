@@ -27,9 +27,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/testing/protocmp"
 
-	reqcommon "sigs.k8s.io/gateway-api-inference-extension/pkg/common/request"
-	pb "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/requesthandling/parsers/vllmgrpc/api/gen"
-	"sigs.k8s.io/gateway-api-inference-extension/test/integration"
+	reqcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/request"
+	pb "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requesthandling/parsers/vllmgrpc/api/gen"
+	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 const (

@@ -25,8 +25,8 @@ import (
 	envoyCorev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extProcPb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	envoyTypePb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	reqcommon "sigs.k8s.io/gateway-api-inference-extension/pkg/common/request"
-	"sigs.k8s.io/gateway-api-inference-extension/test/integration"
+	reqcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/request"
+	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 // Model name constants shared across test suites.

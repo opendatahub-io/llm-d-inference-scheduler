@@ -34,11 +34,11 @@ import (
 	crconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/datalayer"
-	fwkdl "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/datalayer"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/extractor/mocks"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/source/notifications"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/metrics"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/datalayer"
+	fwkdl "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/datalayer/extractor/mocks"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/datalayer/source/notifications"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metrics"
 )
 
 const (

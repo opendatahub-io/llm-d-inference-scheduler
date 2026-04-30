@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"sigs.k8s.io/gateway-api-inference-extension/test/integration"
+	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 func TestRequestAttributeReporterStreaming(t *testing.T) {

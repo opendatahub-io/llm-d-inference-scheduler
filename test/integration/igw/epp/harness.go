@@ -46,17 +46,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	eppRunner "sigs.k8s.io/gateway-api-inference-extension/cmd/epp/runner"
-	logutil "sigs.k8s.io/gateway-api-inference-extension/pkg/common/observability/logging"
-	backendmetrics "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/backend/metrics"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/datastore"
-	fwkdl "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/datalayer"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/interface/plugin"
-	dlmocks "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/framework/plugins/datalayer/source/mocks"
-	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/metrics"
-	eppServer "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/server"
-	epptestutil "sigs.k8s.io/gateway-api-inference-extension/pkg/epp/util/testing"
-	"sigs.k8s.io/gateway-api-inference-extension/test/integration"
+	eppRunner "github.com/llm-d/llm-d-inference-scheduler/cmd/epp/runner"
+	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
+	backendmetrics "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/backend/metrics"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/datastore"
+	fwkdl "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/plugin"
+	dlmocks "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/datalayer/source/mocks"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metrics"
+	eppServer "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/server"
+	epptestutil "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/util/testing"
+	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 // Global State (Initialized in TestMain)
