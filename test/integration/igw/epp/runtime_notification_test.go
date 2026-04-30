@@ -45,7 +45,7 @@ func setupRuntimeWithExtractor(r *datalayer.Runtime, extractorName string) (*moc
 	ext := mocks.NewNotificationExtractor(extractorName)
 	cfg := &datalayer.Config{
 		Sources: []datalayer.DataSourceConfig{
-			{Plugin: src, Extractors: []fwkdl.Extractor{ext}},
+			{Plugin: src, Extractors: []fwkdl.ExtractorBase{ext}},
 		},
 	}
 	return ext, r.Configure(cfg, false, "", logger)
@@ -141,7 +141,7 @@ func TestRuntimeNotificationDispatch(t *testing.T) {
 				ext2 := mocks.NewNotificationExtractor("extractor-2")
 				cfg := &datalayer.Config{
 					Sources: []datalayer.DataSourceConfig{
-						{Plugin: src, Extractors: []fwkdl.Extractor{ext1, ext2}},
+						{Plugin: src, Extractors: []fwkdl.ExtractorBase{ext1, ext2}},
 					},
 				}
 				return ext1, r.Configure(cfg, false, "", logger)
@@ -164,7 +164,7 @@ func TestRuntimeNotificationDispatch(t *testing.T) {
 				workingExtractor := mocks.NewNotificationExtractor("working-extractor")
 				cfg := &datalayer.Config{
 					Sources: []datalayer.DataSourceConfig{
-						{Plugin: src, Extractors: []fwkdl.Extractor{errExtractor, workingExtractor}},
+						{Plugin: src, Extractors: []fwkdl.ExtractorBase{errExtractor, workingExtractor}},
 					},
 				}
 				return workingExtractor, r.Configure(cfg, false, "", logger)
@@ -216,7 +216,7 @@ func TestRuntimeNotificationWithRuntime(t *testing.T) {
 
 	cfg := &datalayer.Config{
 		Sources: []datalayer.DataSourceConfig{
-			{Plugin: src, Extractors: []fwkdl.Extractor{extractor}},
+			{Plugin: src, Extractors: []fwkdl.ExtractorBase{extractor}},
 		},
 	}
 	require.NoError(t, r.Configure(cfg, false, "", logger))
@@ -243,8 +243,8 @@ func TestRuntimeNotificationDifferentGVKs(t *testing.T) {
 
 	cfg := &datalayer.Config{
 		Sources: []datalayer.DataSourceConfig{
-			{Plugin: podSrc, Extractors: []fwkdl.Extractor{podExtractor}},
-			{Plugin: svcSrc, Extractors: []fwkdl.Extractor{svcExtractor}},
+			{Plugin: podSrc, Extractors: []fwkdl.ExtractorBase{podExtractor}},
+			{Plugin: svcSrc, Extractors: []fwkdl.ExtractorBase{svcExtractor}},
 		},
 	}
 

@@ -139,7 +139,7 @@ func buildRouteResponse(endpoint, targetModel, prompt string, stream bool) []*ex
 		endpoint, j,
 		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{Key: "hi", RawValue: []byte("mom")}},
 		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{
-			Key:      reqcommon.RequestIdHeaderKey,
+			Key:      reqcommon.RequestIDHeaderKey,
 			RawValue: []byte("test-request-id"),
 		}},
 	)
@@ -152,7 +152,7 @@ func buildGRPCRouteResponse(endpoint, prompt, methodName string, stream bool) []
 		endpoint, j,
 		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{Key: "hi", RawValue: []byte("mom")}},
 		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{
-			Key:      reqcommon.RequestIdHeaderKey,
+			Key:      reqcommon.RequestIDHeaderKey,
 			RawValue: []byte("test-request-id"),
 		}},
 		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{Key: ":path", RawValue: []byte(methodName)}},
@@ -177,7 +177,7 @@ func ExpectPassthroughRouteTo(endpoint string, rawBytes []byte) []*extProcPb.Pro
 		endpoint, rawBytes,
 		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{Key: "hi", RawValue: []byte("mom")}},
 		&envoyCorev3.HeaderValueOption{Header: &envoyCorev3.HeaderValue{
-			Key:      reqcommon.RequestIdHeaderKey,
+			Key:      reqcommon.RequestIDHeaderKey,
 			RawValue: []byte("test-request-id"),
 		}},
 	)

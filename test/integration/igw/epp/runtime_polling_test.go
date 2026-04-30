@@ -92,7 +92,7 @@ func TestRuntimePollingDispatch(t *testing.T) {
 
 			cfg := &datalayer.Config{
 				Sources: []datalayer.DataSourceConfig{
-					{Plugin: httpSrc, Extractors: []fwkdl.Extractor{ext}},
+					{Plugin: httpSrc, Extractors: []fwkdl.ExtractorBase{ext}},
 				},
 			}
 
@@ -144,7 +144,7 @@ func TestRuntimePollingMultipleExtractors(t *testing.T) {
 
 	cfg := &datalayer.Config{
 		Sources: []datalayer.DataSourceConfig{
-			{Plugin: httpSrc, Extractors: []fwkdl.Extractor{ext1, ext2}},
+			{Plugin: httpSrc, Extractors: []fwkdl.ExtractorBase{ext1, ext2}},
 		},
 	}
 
@@ -193,7 +193,7 @@ func TestRuntimePollingEndpointLifecycle(t *testing.T) {
 
 	cfg := &datalayer.Config{
 		Sources: []datalayer.DataSourceConfig{
-			{Plugin: httpSrc, Extractors: []fwkdl.Extractor{ext}},
+			{Plugin: httpSrc, Extractors: []fwkdl.ExtractorBase{ext}},
 		},
 	}
 
@@ -286,7 +286,7 @@ func TestRuntimePollingHTTPError(t *testing.T) {
 
 	cfg := &datalayer.Config{
 		Sources: []datalayer.DataSourceConfig{
-			{Plugin: httpSrc, Extractors: []fwkdl.Extractor{ext}},
+			{Plugin: httpSrc, Extractors: []fwkdl.ExtractorBase{ext}},
 		},
 	}
 

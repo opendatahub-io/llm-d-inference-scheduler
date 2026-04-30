@@ -170,7 +170,7 @@ featureGates:
 					requests: integration.ReqRaw(
 						map[string]string{
 							"hi":                         "mom",
-							reqcommon.RequestIdHeaderKey: "test-request-id",
+							reqcommon.RequestIDHeaderKey: "test-request-id",
 							metadata.ObjectiveKey:        modelMyModel, // With passthrough parser, the objective key can still be used to specify priority.
 						},
 						"passthrough-parser",
@@ -222,7 +222,7 @@ featureGates:
 							"hi":                         "mom",
 							metadata.ObjectiveKey:        modelSheddable,
 							metadata.ModelNameRewriteKey: modelSheddableTarget,
-							reqcommon.RequestIdHeaderKey: "test-request-id",
+							reqcommon.RequestIDHeaderKey: "test-request-id",
 						},
 						`{"max_tokens":100,"model":"sql-lo`,
 						`ra-sheddable","prompt":"test6","temperature":0}`,
@@ -295,7 +295,7 @@ featureGates:
 							"hi":                         "mom",
 							metadata.ObjectiveKey:        modelDirect,
 							metadata.ModelNameRewriteKey: modelDirect,
-							reqcommon.RequestIdHeaderKey: "test-request-id",
+							reqcommon.RequestIDHeaderKey: "test-request-id",
 						},
 						`{"max_tokens":100,"model":"direct-`,
 						`model","prompt":"test6","temperature":0}`,

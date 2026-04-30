@@ -285,7 +285,7 @@ func GenerateStreamedGRPCRequestSet(
 func generateHeaders(inferenceObjective, targetModel string, filterMetadata []string, customHeaders map[string]string) *extProcPb.ProcessingRequest {
 	headers := []*envoyCorev3.HeaderValue{
 		{Key: "hi", Value: "mom"},
-		{Key: reqcommon.RequestIdHeaderKey, Value: "test-request-id"},
+		{Key: reqcommon.RequestIDHeaderKey, Value: "test-request-id"},
 	}
 	if inferenceObjective != "" {
 		headers = append(headers, &envoyCorev3.HeaderValue{Key: metadata.ObjectiveKey, Value: inferenceObjective})
