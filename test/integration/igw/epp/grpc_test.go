@@ -29,7 +29,7 @@ import (
 
 	reqcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/request"
 	pb "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requesthandling/parsers/vllmgrpc/api/gen"
-	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
+	integration "github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 const (
@@ -60,7 +60,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 	tests := []struct {
 		name          string
 		requests      []*extProcPb.ProcessingRequest
-		pods          []podState
+		pods          []PodState
 		wantResponses []*extProcPb.ProcessingResponse
 		wantMetrics   map[string]string
 		// requiresCRDs indicates that this test case relies on specific Gateway API CRD features (like
@@ -71,7 +71,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 		{
 			name:     "select lower queue and kv cache",
 			requests: integration.ReqGRPCLLM(logger, "test1", inferenceObjectiveWithPriority4, integration.GenerateGRPCMethodName),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 3, 0.2),
 				P(1, 0, 0.1), // Winner (Low Queue, Low KV)
 				P(2, 10, 0.2),
@@ -85,7 +85,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 		{
 			name:     "select lower queue and kv cache for embedRequest",
 			requests: integration.ReqGRPCLLM(logger, "test1", inferenceObjectiveWithPriority4, integration.EmbedGRPCMethodName),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 3, 0.2),
 				P(1, 0, 0.1), // Winner (Low Queue, Low KV)
 				P(2, 10, 0.2),
@@ -99,7 +99,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 		{
 			name:     "select lower queue with streaming request",
 			requests: integration.ReqGRPCLLMWithStream(logger, "test-stream", inferenceObjectiveWithPriority4, integration.GenerateGRPCMethodName),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 3, 0.2),
 				P(1, 0, 0.1), // Winner
 				P(2, 10, 0.2),
@@ -113,7 +113,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 		{
 			name:     "do not shed requests by default",
 			requests: integration.ReqGRPCLLM(logger, "test2", "", integration.GenerateGRPCMethodName),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 6, 0.2, "foo", "bar"), // Winner (Lowest saturated)
 				P(1, 0, 0.85, "foo"),
 				P(2, 10, 0.9, "foo"),
@@ -154,7 +154,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 					string(gRPCPayload[len(gRPCPayload)/2:]),
 				)
 			}(),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 4, 0.2, "foo", "bar"),
 				P(1, 4, 0.85, "foo"),
 			},
@@ -177,7 +177,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 			// Only pods in the subset list are eligible.
 			requests: integration.GenerateStreamedGRPCRequestSet(logger, "test2", "",
 				[]string{"192.168.1.1:8000", "192.168.1.2:8000", "192.168.1.3:8000"}, integration.GenerateGRPCMethodName),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 0, 0.2, "foo"),
 				P(1, 0, 0.1, "foo", modelSQLLoraTarget), // Winner (Low Queue + Matches Subset)
 				P(2, 10, 0.2, "foo"),
@@ -187,7 +187,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 		{
 			name:     "subsetting: partial match",
 			requests: integration.GenerateStreamedGRPCRequestSet(logger, "test2", "", []string{"192.168.1.3:8000"}, integration.GenerateGRPCMethodName),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 0, 0.2, "foo"),
 				P(1, 0, 0.1, "foo", modelSQLLoraTarget),
 				P(2, 10, 0.2, "foo"), // Winner (Matches Subset, despite load)
@@ -197,7 +197,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 		{
 			name:     "subsetting: no pods match",
 			requests: integration.GenerateStreamedGRPCRequestSet(logger, "test2", "", []string{"192.168.1.99:8000"}, integration.GenerateGRPCMethodName),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 0, 0.2, "foo"),
 				P(1, 0, 0.1, "foo", modelSQLLoraTarget),
 			},
@@ -223,7 +223,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 					gRPCPayload[len(gRPCPayload)/2:],
 				)
 			}(),
-			pods: []podState{P(0, 4, 0.2)},
+			pods: []PodState{P(0, 4, 0.2)},
 			wantResponses: func() []*extProcPb.ProcessingResponse {
 				resp := &pb.GenerateResponse{
 					Response: &pb.GenerateResponse_Chunk{
@@ -242,7 +242,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 				map[string]string{"content-type": "application/grpc"},
 				[]byte("no healthy upstream"),
 			),
-			pods:          []podState{P(0, 4, 0.2)},
+			pods:          []PodState{P(0, 4, 0.2)},
 			wantResponses: ExpectBufferResp("no healthy upstream", "application/grpc"),
 		},
 		{
@@ -263,7 +263,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 					gRPCPayload[len(gRPCPayload)/2:],
 				)
 			}(),
-			pods: []podState{P(0, 4, 0.2)},
+			pods: []PodState{P(0, 4, 0.2)},
 			wantResponses: func() []*extProcPb.ProcessingResponse {
 				resp := &pb.GenerateResponse{
 					Response: &pb.GenerateResponse_Complete{
@@ -361,7 +361,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 
 				return append(reqs, respHeaders, respBody1, respBody2, respTrailers)
 			}(),
-			pods: []podState{P(0, 4, 0.2)},
+			pods: []PodState{P(0, 4, 0.2)},
 			wantResponses: func() []*extProcPb.ProcessingResponse {
 				reqs := ExpectGRPCRouteToWithStream("192.168.1.1:8000", "test-stream", integration.GenerateGRPCMethodName)
 
@@ -455,7 +455,7 @@ func TestFullDuplexStreamed_GRPC_KubeInferenceObjectiveRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := t.Context()
 
-			h := NewTestHarness(t, ctx, WithStandardMode(), WithConfigText(testConfigWithVllmGRPCParser)).WithBaseResources()
+			h := NewTestHarness(ctx, t, WithStandardMode(), WithConfigText(testConfigWithVllmGRPCParser)).WithBaseResources()
 
 			h.WithPods(tc.pods).WaitForSync(len(tc.pods), modelMyModel)
 			if len(tc.pods) > 0 {

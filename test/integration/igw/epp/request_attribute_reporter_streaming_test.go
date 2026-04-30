@@ -21,15 +21,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
+	integration "github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 func TestRequestAttributeReporterStreaming(t *testing.T) {
 	ctx := t.Context()
 
-	h := NewTestHarness(t, ctx, WithStandardMode(), WithConfigText(requestAttributeReporterTestConfig)).WithBaseResources()
+	h := NewTestHarness(ctx, t, WithStandardMode(), WithConfigText(requestAttributeReporterTestConfig)).WithBaseResources()
 
-	pods := []podState{P(0, 0, 0.1, modelMyModelTarget)}
+	pods := []PodState{P(0, 0, 0.1, modelMyModelTarget)}
 	h.WithPods(pods).WaitForSync(len(pods), modelMyModel)
 	h.WaitForReadyPodsMetric(len(pods))
 

@@ -149,7 +149,7 @@ func setupIntegrationTest(t *testing.T, withReconciler bool) *testSetup {
 	ctx, cancel := context.WithTimeout(context.Background(), testContextTimeout)
 	t.Cleanup(cancel)
 
-	startManagerAndWaitForSync(t, mgr, ctx)
+	startManagerAndWaitForSync(ctx, t, mgr)
 
 	return &testSetup{
 		namespace:  nsName,
@@ -192,7 +192,7 @@ func setupTestManager(t *testing.T, cfg *rest.Config, nsName string) (ctrl.Manag
 }
 
 // startManagerAndWaitForSync starts the manager and waits for cache sync.
-func startManagerAndWaitForSync(t *testing.T, mgr ctrl.Manager, ctx context.Context) {
+func startManagerAndWaitForSync(ctx context.Context, t *testing.T, mgr ctrl.Manager) {
 	t.Helper()
 
 	errChan := make(chan error, 1)

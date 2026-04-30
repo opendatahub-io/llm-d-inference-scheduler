@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/testing/protocmp"
 
-	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
+	integration "github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 // TestFullDuplexStreamed_DataLayer runs integration tests through the datalayer metrics pipeline.
@@ -40,7 +40,7 @@ func TestFullDuplexStreamed_DataLayer(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			h := NewTestHarness(t, ctx, WithStandardMode(), WithDataLayer())
+			h := NewTestHarness(ctx, t, WithStandardMode(), WithDataLayer())
 			h.WithBaseResources().WithPods(tc.pods).WaitForSync(len(tc.pods), modelMyModel)
 			if len(tc.pods) > 0 {
 				h.WaitForReadyPodsMetric(len(tc.pods))

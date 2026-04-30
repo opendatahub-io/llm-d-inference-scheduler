@@ -56,7 +56,7 @@ import (
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metrics"
 	eppServer "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/server"
 	epptestutil "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/util/testing"
-	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
+	integration "github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 // Global State (Initialized in TestMain)
@@ -206,7 +206,7 @@ func (h *TestHarness) hasCRDs() bool {
 // NewTestHarness boots up a fully isolated test environment.
 // It creates a unique Namespace, scopes the Manager to that Namespace, and starts the components.
 // Note: EPP tests must run serially because they rely on the global Prometheus registry.
-func NewTestHarness(t *testing.T, ctx context.Context, opts ...HarnessOption) *TestHarness {
+func NewTestHarness(ctx context.Context, t *testing.T, opts ...HarnessOption) *TestHarness {
 	t.Helper()
 
 	config := &HarnessConfig{}
@@ -287,8 +287,8 @@ func NewTestHarness(t *testing.T, ctx context.Context, opts ...HarnessOption) *T
 	}()
 
 	extProcClient, conn := integration.ExtProcServerClient(
-		t,
 		mgrCtx,
+		t,
 		eppOptions.GRPCPort,
 		logger,
 	)
@@ -371,7 +371,7 @@ func (h *TestHarness) WithBaseResources() *TestHarness {
 }
 
 // WithPods creates pod objects in the API server and configures the metrics backend.
-func (h *TestHarness) WithPods(pods []podState) *TestHarness {
+func (h *TestHarness) WithPods(pods []PodState) *TestHarness {
 	h.t.Helper()
 	metricsMap := make(map[types.NamespacedName]*fwkdl.Metrics)
 

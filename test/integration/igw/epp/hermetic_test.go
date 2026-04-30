@@ -42,10 +42,11 @@ import (
 
 	v1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	"sigs.k8s.io/gateway-api-inference-extension/apix/v1alpha2"
+
 	reqcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/request"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metadata"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metrics"
-	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
+	integration "github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 const (
@@ -138,7 +139,7 @@ func TestFullDuplexStreamed_KubeInferenceObjectiveRequest(t *testing.T) {
 				{
 					name:     "select lora despite higher kv cache (affinity)",
 					requests: integration.ReqLLM(logger, "test3", modelSQLLora, modelSQLLoraTarget),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 10, 0.2, "foo", "bar"),
 						P(1, 10, 0.4, "foo", modelSQLLoraTarget), // Winner (Affinity overrides KV)
 						P(2, 10, 0.3, "foo"),
@@ -175,7 +176,7 @@ featureGates:
 						},
 						"passthrough-parser",
 					),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 3, 0.2),
 						P(1, 0, 0.1), // Winner
 						P(2, 10, 0.2),
@@ -189,7 +190,7 @@ featureGates:
 				{
 					name:     "do not shed requests by default",
 					requests: integration.ReqLLM(logger, "test4", modelSQLLora, modelSQLLoraTarget),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 6, 0.2, "foo", "bar", modelSQLLoraTarget), // Winner (Lowest saturated)
 						P(1, 0, 0.85, "foo"),
 						P(2, 10, 0.9, "foo"),
@@ -207,7 +208,7 @@ featureGates:
 						map[string]string{"hi": "mom"},
 						"no healthy upstream",
 					),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 0, 0.2, "foo", "bar"),
 					},
 					wantResponses: ExpectReject(
@@ -227,7 +228,7 @@ featureGates:
 						`{"max_tokens":100,"model":"sql-lo`,
 						`ra-sheddable","prompt":"test6","temperature":0}`,
 					),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 4, 0.2, "foo", "bar", modelSheddableTarget),
 						P(1, 4, 0.85, "foo", modelSheddableTarget),
 					},
@@ -259,7 +260,7 @@ featureGates:
 					// Only pods in the subset list are eligible.
 					requests: ReqSubset("test2", modelSQLLora, modelSQLLoraTarget,
 						"192.168.1.1:8000", "192.168.1.2:8000", "192.168.1.3:8000"),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 0, 0.2, "foo"),
 						P(1, 0, 0.1, "foo", modelSQLLoraTarget), // Winner (Low Queue + Matches Subset)
 						P(2, 10, 0.2, "foo"),
@@ -269,7 +270,7 @@ featureGates:
 				{
 					name:     "subsetting: partial match",
 					requests: ReqSubset("test2", modelSQLLora, modelSQLLoraTarget, "192.168.1.3:8000"),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 0, 0.2, "foo"),
 						P(1, 0, 0.1, "foo", modelSQLLoraTarget),
 						P(2, 10, 0.2, "foo"), // Winner (Matches Subset, despite load)
@@ -279,7 +280,7 @@ featureGates:
 				{
 					name:     "subsetting: no pods match",
 					requests: ReqSubset("test2", modelSQLLora, modelSQLLoraTarget, "192.168.1.99:8000"),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 0, 0.2, "foo"),
 						P(1, 0, 0.1, "foo", modelSQLLoraTarget),
 					},
@@ -300,7 +301,7 @@ featureGates:
 						`{"max_tokens":100,"model":"direct-`,
 						`model","prompt":"test6","temperature":0}`,
 					),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 4, 0.2, "foo", "bar", modelSheddableTarget),
 					},
 					wantResponses: ExpectRouteTo("192.168.1.1:8000", modelDirect, "test6"),
@@ -311,7 +312,7 @@ featureGates:
 				{
 					name:     "rewrite request model",
 					requests: integration.ReqLLM(logger, "test-rewrite", modelToBeWritten, modelToBeWritten),
-					pods: []podState{
+					pods: []PodState{
 						P(0, 0, 0.1, "foo", modelAfterRewrite),
 					},
 					wantResponses: ExpectRouteTo("192.168.1.1:8000", modelAfterRewrite, "test-rewrite"),
@@ -326,7 +327,7 @@ featureGates:
 						"content-type": "text/event-stream",
 						"status":       "200",
 					}),
-					pods:          []podState{P(0, 0, 0, "foo")},
+					pods:          []PodState{P(0, 0, 0, "foo")},
 					wantResponses: nil,
 				},
 
@@ -338,7 +339,7 @@ featureGates:
 						`{"max_tokens":100,"model":"sql-lo`,
 						`ra-sheddable","prompt":"test6","temperature":0}`,
 					),
-					pods: []podState{P(0, 4, 0.2, modelSheddableTarget)},
+					pods: []PodState{P(0, 4, 0.2, modelSheddableTarget)},
 					wantResponses: ExpectBufferResp(
 						fmt.Sprintf(`{"max_tokens":100,"model":%q,"prompt":"test6","temperature":0}`, modelSheddable),
 						"application/json"),
@@ -349,7 +350,7 @@ featureGates:
 						map[string]string{"content-type": "application/json"},
 						"no healthy upstream",
 					),
-					pods:          []podState{P(0, 4, 0.2, modelSheddableTarget)},
+					pods:          []PodState{P(0, 4, 0.2, modelSheddableTarget)},
 					wantResponses: ExpectBufferResp("no healthy upstream", "application/json"),
 				},
 				{
@@ -359,7 +360,7 @@ featureGates:
 						`{"max_tokens":100,"model":"sql-lora-sheddable","prompt":"test6","temperature":0}`,
 						"",
 					),
-					pods: []podState{P(0, 4, 0.2, modelSheddableTarget)},
+					pods: []PodState{P(0, 4, 0.2, modelSheddableTarget)},
 					wantResponses: ExpectBufferResp(
 						fmt.Sprintf(`{"max_tokens":100,"model":%q,"prompt":"test6","temperature":0}`, modelSheddable),
 						"application/json"),
@@ -374,7 +375,7 @@ featureGates:
 						`data: {"usage":{"prompt_tokens":7,"total_tokens":17,"completion_tokens":10}}`+"\n"+`data: [DONE]`,
 						"", // EndOfStream
 					),
-					pods:         []podState{P(0, 4, 0.2, modelSheddableTarget)},
+					pods:         []PodState{P(0, 4, 0.2, modelSheddableTarget)},
 					waitForModel: modelSheddable,
 					wantResponses: ExpectStreamResp(
 						`data: {}`,
@@ -439,7 +440,7 @@ featureGates:
 						harnessOpts = append(harnessOpts, WithConfigText(tc.configText))
 					}
 
-					h = NewTestHarness(t, ctx, harnessOpts...)
+					h = NewTestHarness(ctx, t, harnessOpts...)
 
 					if executionMode.mode == modeStandard || executionMode.standaloneStrategy == strategyWithCRD {
 						h = h.WithBaseResources()

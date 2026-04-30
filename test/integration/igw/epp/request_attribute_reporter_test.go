@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
-	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
+	integration "github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 var reqLogger = zap.New(zap.UseDevMode(true), zap.Level(-1*zapcore.Level(logutil.DEFAULT)))
@@ -37,10 +37,10 @@ func TestRequestAttributeReporter(t *testing.T) {
 	ctx := t.Context()
 
 	// Use our new WithConfigText harness option to provide the custom config.
-	h := NewTestHarness(t, ctx, WithStandardMode(), WithConfigText(requestAttributeReporterTestConfig)).WithBaseResources()
+	h := NewTestHarness(ctx, t, WithStandardMode(), WithConfigText(requestAttributeReporterTestConfig)).WithBaseResources()
 
 	// Pods must exist in datastore so that there's no early failure
-	pods := []podState{P(0, 0, 0.1, modelMyModelTarget)}
+	pods := []PodState{P(0, 0, 0.1, modelMyModelTarget)}
 	h.WithPods(pods).WaitForSync(len(pods), modelMyModel)
 	h.WaitForReadyPodsMetric(len(pods))
 

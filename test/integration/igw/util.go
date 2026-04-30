@@ -43,6 +43,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
+
 	pb "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requesthandling/parsers/vllmgrpc/api/gen"
 
 	reqcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/request"
@@ -561,8 +562,8 @@ func StreamedRequest(
 // serverRunner: A function that blocks until the server exits (e.g. Runnable.Start).
 // port: The port the server is configured to listen on.
 func StartExtProcServer(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	serverRunner func(context.Context) error,
 	port int,
 	logger logr.Logger,
@@ -580,13 +581,13 @@ func StartExtProcServer(
 		}
 	}()
 
-	return ExtProcServerClient(t, ctx, port, logger)
+	return ExtProcServerClient(ctx, t, port, logger)
 }
 
 // ExtProcServerClient returns a ExternalProcessor_ProcessClient listen to localhost on given port.
 func ExtProcServerClient(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	port int,
 	logger logr.Logger,
 ) (extProcPb.ExternalProcessor_ProcessClient, *grpc.ClientConn) {

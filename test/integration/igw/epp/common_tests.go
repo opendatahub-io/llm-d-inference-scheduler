@@ -25,8 +25,9 @@ import (
 	envoyCorev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extProcPb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	envoyTypePb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+
 	reqcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/request"
-	"github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
+	integration "github.com/llm-d/llm-d-inference-scheduler/test/integration/igw"
 )
 
 // Model name constants shared across test suites.
@@ -266,7 +267,7 @@ func ExpectGRPCStreamResp(chunks ...string) []*extProcPb.ProcessingResponse {
 type testCase struct {
 	name          string
 	requests      []*extProcPb.ProcessingRequest
-	pods          []podState
+	pods          []PodState
 	configText    string
 	wantResponses []*extProcPb.ProcessingResponse
 	wantMetrics   map[string]string
@@ -285,7 +286,7 @@ func commonTestCases(prio func(int) int) []testCase {
 		{
 			name:     "select lower queue and kv cache",
 			requests: integration.ReqLLM(logger, "test1", modelMyModel, modelMyModelTarget),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 3, 0.2),
 				P(1, 0, 0.1), // Winner (Low Queue, Low KV)
 				P(2, 10, 0.2),
@@ -300,7 +301,7 @@ func commonTestCases(prio func(int) int) []testCase {
 		{
 			name:     "select active lora, low queue",
 			requests: integration.ReqLLM(logger, "test2", modelSQLLora, modelSQLLoraTarget),
-			pods: []podState{
+			pods: []PodState{
 				P(0, 0, 0.2, "foo", "bar"),
 				P(1, 0, 0.1, "foo", modelSQLLoraTarget), // Winner (Has LoRA)
 				P(2, 10, 0.2, "foo", "bar"),
@@ -331,7 +332,7 @@ func commonTestCases(prio func(int) int) []testCase {
 
 // --- Data Structures & Metrics Helpers ---
 
-type podState struct {
+type PodState struct {
 	index        int
 	queueSize    int
 	kvCacheUsage float64
@@ -340,8 +341,8 @@ type podState struct {
 
 // P constructs a Pod State: Index, Queue, KV%, Models...
 // Usage: P(0, 5, 0.2, "model-a")
-func P(idx int, q int, kv float64, models ...string) podState {
-	return podState{index: idx, queueSize: q, kvCacheUsage: kv, activeModels: models}
+func P(idx int, q int, kv float64, models ...string) PodState {
+	return PodState{index: idx, queueSize: q, kvCacheUsage: kv, activeModels: models}
 }
 
 type label struct{ name, value string }
