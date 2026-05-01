@@ -22,13 +22,12 @@ DEST_CHART_DIR=${DEST_CHART_DIR:-bin/}
 
 EXTRA_TAG=${EXTRA_TAG:-$(git branch --show-current)}
 CHART_VERSION=${CHART_VERSION:-"v0"}
+IMAGE_REGISTRY=${IMAGE_REGISTRY:-ghcr.io/llm-d}
+EPP_RELEASE_IMAGE_REPOSITORY=${EPP_RELEASE_IMAGE_REPOSITORY:-llm-d-inference-scheduler}
 AGENTGATEWAY_TAG=${AGENTGATEWAY_TAG:-${EXTRA_TAG}}
-export EXTRA_TAG AGENTGATEWAY_TAG
+export EXTRA_TAG AGENTGATEWAY_TAG IMAGE_REGISTRY EPP_RELEASE_IMAGE_REPOSITORY
 
-STAGING_IMAGE_REGISTRY=${STAGING_IMAGE_REGISTRY:-us-central1-docker.pkg.dev/k8s-staging-images}
-# TODO: Update these defaults once llm-d owns and publishes the EPP image and charts.
-IMAGE_REGISTRY=${IMAGE_REGISTRY:-${STAGING_IMAGE_REGISTRY}/gateway-api-inference-extension}
-HELM_CHART_REPO=${HELM_CHART_REPO:-${STAGING_IMAGE_REGISTRY}/gateway-api-inference-extension/charts}
+HELM_CHART_REPO=${HELM_CHART_REPO:-${IMAGE_REGISTRY}/charts}
 CHART=${CHART:-inferencepool}
 
 HELM=${HELM:-./bin/helm}
@@ -38,7 +37,12 @@ readonly semver_regex='^v([0-9]+)(\.[0-9]+){1,2}(-rc.[0-9]+)?$'
 chart_version=${CHART_VERSION}
 if [[ ${EXTRA_TAG} =~ ${semver_regex} ]]
 then
-  ${YQ} -i '.inferenceExtension.image.tag=strenv(EXTRA_TAG)' config/charts/${CHART}/values.yaml
+  ${YQ} -i \
+    '.inferenceExtension.image.registry=strenv(IMAGE_REGISTRY) |
+     .inferenceExtension.image.repository=strenv(EPP_RELEASE_IMAGE_REPOSITORY) |
+     .inferenceExtension.image.tag=strenv(EXTRA_TAG) |
+     .inferenceExtension.image.pullPolicy="IfNotPresent"' \
+    config/charts/${CHART}/values.yaml
   if [[ ${CHART} == "standalone" ]]; then
     ${YQ} -i \
       '.inferenceExtension.sidecar.presets.agentgateway.image="cr.agentgateway.dev/agentgateway:" + strenv(AGENTGATEWAY_TAG)' \
