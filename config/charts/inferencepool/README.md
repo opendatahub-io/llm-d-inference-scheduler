@@ -266,7 +266,7 @@ These are the options available to you with `provider.name` set to `istio`:
 
 | **Parameter Name**                          | **Description**                                                                                                        |
 |---------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| `istio.destinationRule.host`            | Custom host value for the destination rule. If not set this will use the default value which is derrived from the epp service name and release namespace to gerenate a valid service address. |
+| `istio.destinationRule.host`            | Custom host value for the destination rule. If not set this will use the default value which is derived from the epp service name and release namespace to generate a valid service address. |
 | `istio.destinationRule.trafficPolicy.connectionPool`            | Configure the connectionPool level settings of the traffic policy |
 
 #### OpenTelemetry

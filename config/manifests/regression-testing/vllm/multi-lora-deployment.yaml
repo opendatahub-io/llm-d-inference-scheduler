@@ -132,7 +132,7 @@ spec:
             # loop forever. Be sure to set this appropriately.
             failureThreshold: 1800
             # Set delay to start low so that if the base model changes to something smaller
-            # or an optimization is deployed, we don't wait unneccesarily.
+            # or an optimization is deployed, we don't wait unnecessarily.
             initialDelaySeconds: 2
             # As a startup probe, this stops running and so we can more aggressively probe
             # even a moderately complex startup - this is a very important workload.
@@ -253,7 +253,6 @@ spec:
             medium: Memory
         - name: adapters
           emptyDir: {}
-
 
 
 
