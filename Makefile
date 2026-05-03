@@ -6,6 +6,8 @@ include Makefile.tools.mk
 include Makefile.cluster.mk
 # Kind specific targets are defined in Makefile.kind.mk.
 include Makefile.kind.mk
+# Code generation targets are defined in Makefile.gen.mk
+include Makefile.gen.mk
 
 # Defaults
 TARGETOS ?= $(shell command -v go >/dev/null 2>&1 && go env GOOS || uname -s | tr '[:upper:]' '[:lower:]')
@@ -41,7 +43,7 @@ export BUILDER_IMAGE ?= $(BUILDER_TAG_BASE):$(BUILDER_TAG)
 NAMESPACE ?= hc4ai-operator
 LINT_NEW_ONLY ?= false # Set to true to only lint new code, false to lint all code (default matches CI behavior)
 
-CONTAINER_RUNTIME := $(shell { command -v docker >/dev/null 2>&1 && echo docker; } || { command -v podman >/dev/null 2>&1 && echo podman; } || echo "")
+CONTAINER_RUNTIME ?= $(shell { command -v docker >/dev/null 2>&1 && echo docker; } || { command -v podman >/dev/null 2>&1 && echo podman; } || echo "")
 export CONTAINER_RUNTIME
 
 GIT_COMMIT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null)
@@ -198,6 +200,10 @@ go-mod-check: image-build-builder
 	$(BUILDER_RUN) 'go mod tidy'
 	@git diff --exit-code go.mod go.sum || \
 	( echo "ERROR: go.mod/go.sum are not tidy. Run 'go mod tidy' and commit."; exit 1 )
+
+.PHONY: tidy
+tidy:
+	go mod tidy
 
 .PHONY: clean
 clean: ## Clean build artifacts, tools and caches
