@@ -32,11 +32,11 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-
 	infextv1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	infextv1a2 "sigs.k8s.io/gateway-api-inference-extension/apix/v1alpha2"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/epp/util/env"
-	testutils "sigs.k8s.io/gateway-api-inference-extension/test/utils"
+
+	testutils "github.com/llm-d/llm-d-inference-scheduler/test/utils/igw"
 )
 
 const (
@@ -75,7 +75,7 @@ const (
 	// modelServerManifestFilepathEnvVar is the env var that holds absolute path to the manifest for the model server test resource.
 	modelServerManifestFilepathEnvVar = "MANIFEST_PATH"
 	// crdKustomizePath is the kustomize folder path for the required CRDs.
-	crdKustomizePath = "../../../config/crd/"
+	crdKustomizePath = "../../../deploy/components/crds-gie"
 )
 
 const e2eLeaderElectionEnabledEnvVar = "E2E_LEADER_ELECTION_ENABLED"
