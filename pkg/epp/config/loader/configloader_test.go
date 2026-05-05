@@ -19,12 +19,13 @@ package loader
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -47,7 +48,7 @@ import (
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/flowcontrol/usagelimits"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/requesthandling/parsers/openai"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/picker/maxscore"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/profile"
+	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/profilehandler/single"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/scorer/kvcacheutilization"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/scorer/prefix"
 	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/scheduling/scorer/queuedepth"
@@ -84,10 +85,46 @@ func TestLoadRawConfiguration(t *testing.T) {
 		configText string
 		want       *configapi.EndpointPickerConfig
 		wantErr    bool
+		deprecated bool
 	}{
 		{
 			name:       "Success - Full Configuration",
 			configText: successConfigText,
+			want: &configapi.EndpointPickerConfig{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "EndpointPickerConfig",
+					APIVersion: "llm-d.ai/v1alpha1",
+				},
+				Plugins: []configapi.PluginSpec{
+					{Name: "test1", Type: testPluginType, Parameters: json.RawMessage(`{"threshold":10}`)},
+					{Name: "profileHandler", Type: testProfileHandler},
+					{Name: testScorerType, Type: testScorerType, Parameters: json.RawMessage(`{"blockSize":32}`)},
+					{Name: "testPicker", Type: testPickerType},
+				},
+				SchedulingProfiles: []configapi.SchedulingProfile{
+					{
+						Name: "default",
+						Plugins: []configapi.SchedulingPlugin{
+							{PluginRef: "test1"},
+							{PluginRef: testScorerType, Weight: ptr.To(50.0)},
+							{PluginRef: "testPicker"},
+						},
+					},
+				},
+				FeatureGates: configapi.FeatureGates{
+					datalayer.ExperimentalDatalayerFeatureGate,
+					flowcontrol.FeatureGate,
+				},
+				SaturationDetector: &configapi.SaturationDetectorConfig{
+					PluginRef: "utilization-detector",
+				},
+			},
+			wantErr:    false,
+			deprecated: false,
+		},
+		{
+			name:       "Success - using deprecated Groupname",
+			configText: successDeprecatedText,
 			want: &configapi.EndpointPickerConfig{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "EndpointPickerConfig",
@@ -117,7 +154,8 @@ func TestLoadRawConfiguration(t *testing.T) {
 					PluginRef: "utilization-detector",
 				},
 			},
-			wantErr: false,
+			wantErr:    false,
+			deprecated: true,
 		},
 		{
 			name:       "Success - No Profiles",
@@ -125,21 +163,22 @@ func TestLoadRawConfiguration(t *testing.T) {
 			want: &configapi.EndpointPickerConfig{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "EndpointPickerConfig",
-					APIVersion: "inference.networking.x-k8s.io/v1alpha1",
+					APIVersion: "llm-d.ai/v1alpha1",
 				},
 				Plugins: []configapi.PluginSpec{
 					{Name: "test1", Type: testPluginType, Parameters: json.RawMessage(`{"threshold":10}`)},
 				},
 				FeatureGates: configapi.FeatureGates{},
 			},
-			wantErr: false,
+			wantErr:    false,
+			deprecated: false,
 		},
 		{
 			name:       "Success - Default configuration",
 			configText: "",
 			want: &configapi.EndpointPickerConfig{
 				TypeMeta: metav1.TypeMeta{
-					APIVersion: "inference.networking.x-k8s.io/v1alpha1",
+					APIVersion: "llm-d.ai/v1alpha1",
 					Kind:       "EndpointPickerConfig",
 				},
 				FeatureGates: configapi.FeatureGates{}, // Empty means datalayer enabled (default behavior)
@@ -195,24 +234,28 @@ func TestLoadRawConfiguration(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			wantErr:    false,
+			deprecated: false,
 		},
 		{
 			name:       "Error - Invalid YAML",
 			configText: errorBadYamlText,
 			wantErr:    true,
+			deprecated: false,
 		},
 		{
 			name:       "Error - Unknown Feature Gate",
 			configText: errorUnknownFeatureGateText,
 			wantErr:    true,
+			deprecated: false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			logger := logging.NewTestLogger()
+			writer := &strings.Builder{}
+			logger := logging.NewTestLoggerWithWriter(writer)
 
 			got, _, err := LoadRawConfig([]byte(tc.configText), logger)
 
@@ -221,8 +264,14 @@ func TestLoadRawConfiguration(t *testing.T) {
 				return
 			}
 			require.NoError(t, err, "Expected LoadRawConfig to succeed")
-			diff := cmp.Diff(tc.want, got, cmpopts.IgnoreFields(configapi.EndpointPickerConfig{}, "TypeMeta"))
+			diff := cmp.Diff(tc.want, got)
 			require.Empty(t, diff, "Config mismatch (-want +got):\n%s", diff)
+
+			if strings.Contains(writer.String(), "deprecated") {
+				require.True(t, tc.deprecated, "Deprecated configuration wasn't marked as deprecated")
+			} else {
+				require.False(t, tc.deprecated, "Valid configuration was marked as deprecated")
+			}
 		})
 	}
 }
@@ -288,7 +337,7 @@ func TestInstantiateAndConfigure(t *testing.T) {
 			configText: successWithNoProfileHandlersText,
 			wantErr:    false,
 			validate: func(t *testing.T, handle fwkplugin.Handle, rawCfg *configapi.EndpointPickerConfig, cfg *config.Config) {
-				require.True(t, hasPluginType(handle, profile.SingleProfileHandlerType),
+				require.True(t, hasPluginType(handle, single.SingleProfileHandlerType),
 					"Defaults: SingleProfileHandler was not injected")
 			},
 		},
@@ -424,7 +473,7 @@ func TestInstantiateAndConfigure(t *testing.T) {
 		},
 		{
 			name:       "Error (Instantiation) - Invalid JSON Parameters",
-			configText: errorBadPluginJsonText,
+			configText: errorBadPluginJSONText,
 			wantErr:    true,
 		},
 		{
@@ -504,27 +553,42 @@ func TestInstantiateAndConfigure(t *testing.T) {
 			},
 		},
 		{
-			name:       "Success (DataLayer) - Empty dataLayer section disables default metrics",
+			name:       "Success (DataLayer) - Empty dataLayer section injects defaults (additive)",
 			configText: successDataLayerNoSourcesText,
 			wantErr:    false,
 			validate: func(t *testing.T, handle fwkplugin.Handle, rawCfg *configapi.EndpointPickerConfig, cfg *config.Config) {
-				require.NotNil(t, rawCfg.DataLayer, "DataLayer section should be present (user provided it)")
-				require.Empty(t, rawCfg.DataLayer.Sources, "No sources should be present")
-				require.Nil(t, handle.Plugin(sourcemetrics.MetricsDataSourceType), "MetricsDataSource should not be instantiated")
-				require.Nil(t, handle.Plugin(extractormetrics.MetricsExtractorType), "MetricsExtractor should not be instantiated")
-				require.NotNil(t, cfg.DataConfig, "DataConfig should still be built (just empty)")
-				require.Empty(t, cfg.DataConfig.Sources, "DataConfig should have no sources")
+				require.NotNil(t, rawCfg.DataLayer, "DataLayer section should be present")
+				require.Len(t, rawCfg.DataLayer.Sources, 1, "Default metrics source should be injected")
+				require.Equal(t, sourcemetrics.MetricsDataSourceType, rawCfg.DataLayer.Sources[0].PluginRef)
+				require.NotNil(t, handle.Plugin(sourcemetrics.MetricsDataSourceType), "MetricsDataSource should be instantiated")
+				require.NotNil(t, handle.Plugin(extractormetrics.MetricsExtractorType), "MetricsExtractor should be instantiated")
+				require.NotNil(t, cfg.DataConfig)
+				require.Len(t, cfg.DataConfig.Sources, 1)
 			},
 		},
 		{
-			name:       "Success (DataLayer) - Explicit data config preserved",
+			name:       "Success (DataLayer) - injectDefaults: false suppresses injection",
+			configText: successDataLayerOptOutText,
+			wantErr:    false,
+			validate: func(t *testing.T, handle fwkplugin.Handle, rawCfg *configapi.EndpointPickerConfig, cfg *config.Config) {
+				require.NotNil(t, rawCfg.DataLayer)
+				require.Empty(t, rawCfg.DataLayer.Sources, "No sources should be present when InjectDefaults is false")
+				require.Nil(t, handle.Plugin(sourcemetrics.MetricsDataSourceType), "MetricsDataSource should not be instantiated")
+				require.Nil(t, handle.Plugin(extractormetrics.MetricsExtractorType), "MetricsExtractor should not be instantiated")
+				require.NotNil(t, cfg.DataConfig, "DataConfig is built but empty")
+				require.Empty(t, cfg.DataConfig.Sources)
+			},
+		},
+		{
+			name:       "Success (DataLayer) - Explicit non-metrics source gets defaults injected too",
 			configText: successDataLayerExplicitConfigText,
 			wantErr:    false,
 			validate: func(t *testing.T, handle fwkplugin.Handle, rawCfg *configapi.EndpointPickerConfig, cfg *config.Config) {
 				require.NotNil(t, rawCfg.DataLayer, "Data config should be present")
-				require.Len(t, rawCfg.DataLayer.Sources, 1)
-				require.Equal(t, "testSource", rawCfg.DataLayer.Sources[0].PluginRef,
-					"Explicit source should be preserved, not overwritten by defaults")
+				require.Len(t, rawCfg.DataLayer.Sources, 2, "User source + injected metrics source")
+				pluginRefs := []string{rawCfg.DataLayer.Sources[0].PluginRef, rawCfg.DataLayer.Sources[1].PluginRef}
+				require.Contains(t, pluginRefs, "testSource", "User source should be preserved")
+				require.Contains(t, pluginRefs, sourcemetrics.MetricsDataSourceType, "Default metrics source should be injected")
 			},
 		},
 		{
@@ -666,7 +730,7 @@ func (m *mockHandler) Pick(context.Context, *framework.CycleState, *framework.In
 }
 func (m *mockHandler) ProcessResults(context.Context, *framework.CycleState, *framework.InferenceRequest,
 	map[string]*framework.ProfileRunResult) (*framework.SchedulingResult, error) {
-	return nil, nil
+	return nil, errors.New("sentinel error for mock handler")
 }
 
 // Mock Source
@@ -776,7 +840,7 @@ func registerTestPlugins(t *testing.T) {
 
 	// Ensure system defaults are registered too.
 	fwkplugin.Register(maxscore.MaxScorePickerType, maxscore.MaxScorePickerFactory)
-	fwkplugin.Register(profile.SingleProfileHandlerType, profile.SingleProfileHandlerFactory)
+	fwkplugin.Register(single.SingleProfileHandlerType, single.SingleProfileHandlerFactory)
 	fwkplugin.Register(openai.OpenAIParserType, openai.OpenAIParserPluginFactory)
 	fwkplugin.Register(usagelimits.StaticUsageLimitPolicyType, usagelimits.StaticPolicyFactory)
 	// Datalayer plugins are now defaults; register their real factories.

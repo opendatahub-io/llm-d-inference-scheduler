@@ -76,9 +76,9 @@ func NewPodMetricsClientImpl(logger logr.Logger, config Config) (PodMetricsClien
 	}
 	verifyMetricMapping(logger, *mapping)
 
-	var metricsHttpClient *http.Client
+	var metricsHTTPClient *http.Client
 	if config.ModelServerMetricsScheme == "https" {
-		metricsHttpClient = &http.Client{
+		metricsHTTPClient = &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: config.ModelServerMetricsHTTPSInsecure,
@@ -86,13 +86,13 @@ func NewPodMetricsClientImpl(logger logr.Logger, config Config) (PodMetricsClien
 			},
 		}
 	} else {
-		metricsHttpClient = http.DefaultClient
+		metricsHTTPClient = http.DefaultClient
 	}
 	return &PodMetricsClientImpl{
 		MetricMapping:            mapping,
 		ModelServerMetricsPath:   config.ModelServerMetricsPath,
 		ModelServerMetricsScheme: config.ModelServerMetricsScheme,
-		Client:                   metricsHttpClient,
+		Client:                   metricsHTTPClient,
 	}, nil
 }
 
@@ -245,7 +245,8 @@ func (p *PodMetricsClientImpl) promToPodMetrics(
 // retrieve the latest by sorting the value.
 func (p *PodMetricsClientImpl) getLatestLoraMetric(metricFamilies map[string]*dto.MetricFamily) (*dto.Metric, error) {
 	if p.MetricMapping.LoraRequestInfo == nil {
-		return nil, nil // No LoRA metrics configured
+		// No LoRA metrics configured
+		return nil, nil //nolint:nilnil
 	}
 
 	loraRequests, ok := metricFamilies[p.MetricMapping.LoraRequestInfo.MetricName]
@@ -281,7 +282,8 @@ func (p *PodMetricsClientImpl) getLatestLoraMetric(metricFamilies map[string]*dt
 		}
 	}
 	if latest == nil {
-		return nil, nil
+		// nothing to return
+		return nil, nil //nolint:nilnil
 	}
 
 	return latest, nil // Convert nanoseconds to time.Time
