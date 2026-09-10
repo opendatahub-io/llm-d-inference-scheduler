@@ -29,6 +29,7 @@ import (
 
 	errcommon "github.com/llm-d/llm-d-router/pkg/common/error"
 	logutil "github.com/llm-d/llm-d-router/pkg/common/observability/logging"
+	"github.com/llm-d/llm-d-router/pkg/common/observability/semconv"
 	"github.com/llm-d/llm-d-router/pkg/common/observability/tracing"
 	"github.com/llm-d/llm-d-router/pkg/epp/datalayer"
 	"github.com/llm-d/llm-d-router/pkg/epp/framework/interface/plugin"
@@ -126,14 +127,10 @@ func (p *SchedulerProfile) String() string {
 func (p *SchedulerProfile) Run(ctx context.Context, request *fwksched.InferenceRequest, candidateEndpoints []fwksched.Endpoint) (*fwksched.ProfileRunResult, error) {
 	endpoints := p.runFilterPlugins(ctx, request, candidateEndpoints)
 	if len(endpoints) == 0 {
-		// Filters draining a non-empty candidate set means the pool is busy, not
-		// broken: an empty pool is rejected in the director before scheduling
-		// runs. Report it with the same status and drop-reason vocabulary as a
-		// flow control capacity rejection.
 		return nil, errcommon.Error{
-			Code:    errcommon.ResourceExhausted,
+			Code:    errcommon.ServiceUnavailable,
 			Msg:     "no endpoints available for the given request",
-			Headers: map[string]string{errcommon.RequestDroppedReasonHeaderKey: string(errcommon.RequestDroppedReasonSaturated)},
+			Headers: map[string]string{errcommon.RequestDroppedReasonHeaderKey: string(errcommon.RequestDroppedReasonNoEndpoints)},
 		}
 	}
 	// if we got here, there is at least one endpoint to score
@@ -288,10 +285,10 @@ func runScorer(ctx context.Context, tracer trace.Tracer, tracingActive bool, sco
 	ctx, span := tracer.Start(ctx, "scorer."+typedName.Type, internalSpanKind)
 	defer span.End()
 	span.SetAttributes(
-		attribute.String("llm_d.epp.scorer.type", typedName.Type),
-		attribute.String("llm_d.epp.scorer.name", typedName.Name),
-		attribute.Float64("llm_d.epp.scorer.weight", scorer.Weight()),
-		attribute.Int("llm_d.epp.scorer.candidate_endpoints", len(endpoints)),
+		semconv.LLMDEPPScorerType(typedName.Type),
+		semconv.LLMDEPPScorerName(typedName.Name),
+		semconv.LLMDEPPScorerWeight(scorer.Weight()),
+		semconv.LLMDEPPScorerCandidateEndpoints(len(endpoints)),
 	)
 
 	before := time.Now()
@@ -309,9 +306,9 @@ func runScorer(ctx context.Context, tracer trace.Tracer, tracingActive bool, sco
 			totalScore += s
 		}
 		span.SetAttributes(
-			attribute.Float64("llm_d.epp.scorer.score.max", maxScore),
-			attribute.Float64("llm_d.epp.scorer.score.avg", totalScore/float64(len(scores))),
-			attribute.Int("llm_d.epp.scorer.endpoints_scored", len(scores)),
+			semconv.LLMDEPPScorerScoreMax(maxScore),
+			semconv.LLMDEPPScorerScoreAvg(totalScore/float64(len(scores))),
+			semconv.LLMDEPPScorerEndpointsScored(len(scores)),
 		)
 	}
 
@@ -324,10 +321,10 @@ func requestSpanAttributes(request *fwksched.InferenceRequest) []attribute.KeyVa
 	}
 	attributes := make([]attribute.KeyValue, 0, 2)
 	if request.TargetModel != "" {
-		attributes = append(attributes, attribute.String("gen_ai.request.model", request.TargetModel))
+		attributes = append(attributes, semconv.GenAIRequestModel(request.TargetModel))
 	}
 	if request.RequestID != "" {
-		attributes = append(attributes, attribute.String("gen_ai.request.id", request.RequestID))
+		attributes = append(attributes, semconv.GenAIRequestID(request.RequestID))
 	}
 	return attributes
 }
