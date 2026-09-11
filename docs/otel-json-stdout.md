@@ -30,7 +30,7 @@ Severity numbers use the OpenTelemetry bands: `DEBUG=5`, `INFO=9`, `WARN=13`,
 Example:
 
 ```json
-{"timestamp":"2026-09-11T11:34:56.123Z","severity_text":"INFO","severity_number":9,"body":"request complete","logger":"epp","service.name":"llm-d-router","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7"}
+{"timestamp":"2026-09-11T11:34:56.123Z","severity_text":"INFO","severity_number":9,"body":"request complete","logger":"epp","service.name":"llm-d-router","trace_id":"01234567890123456789012345678901","span_id":"0123456789012345"}
 ```
 
 Trace fields are omitted when no valid span is active.
